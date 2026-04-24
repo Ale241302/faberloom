@@ -1,0 +1,978 @@
+/* ============================================================
+   FaberLoom v1 Beta — Mock data (17 collections)
+   All inline for file:// compatibility. No fetch.
+   Anchored to SPECs A1/A4/A5 + prompt decisions (A6).
+   ============================================================ */
+
+(function () {
+  const FL = window.__faberloom;
+  if (!FL) { console.error('boot must load before mock'); return; }
+
+  const MOCK = {
+
+  /* ─── 1. tenants ────────────────────────────────── */
+  tenants: [
+    { id: 't_muito',   name: 'Muito Work',       region: 'LATAM', plan: 'beta', seatsActive30d: 6, createdAt: '2026-01-01' },
+    { id: 't_demo_mx', name: 'Demo Partner MX',  region: 'MX',    plan: 'beta', seatsActive30d: 3, createdAt: '2026-02-15' },
+    { id: 't_demo_co', name: 'Demo Partner CO',  region: 'CO',    plan: 'beta', seatsActive30d: 4, createdAt: '2026-03-01' }
+  ],
+
+  /* ─── 2. users ──────────────────────────────────── */
+  users: [
+    { id: 'u_alvaro', tenantId: 't_muito', email: 'sjoalfaro@gmail.com', role: 'owner',    deptIds: ['d_ops'],              name: 'Álvaro',  createdAt: '2026-01-15', lastActive: '2026-04-19' },
+    { id: 'u_ana',    tenantId: 't_muito', email: 'ana@muito.work',     role: 'admin',    deptIds: ['d_ops','d_ventas'],   name: 'Ana',     createdAt: '2026-02-01', lastActive: '2026-04-19' },
+    { id: 'u_bruno',  tenantId: 't_muito', email: 'bruno@muito.work',   role: 'operator', deptIds: ['d_ventas'],           name: 'Bruno',   createdAt: '2026-03-01', lastActive: '2026-04-18' },
+    { id: 'u_carla',  tenantId: 't_muito', email: 'carla@muito.work',   role: 'operator', deptIds: ['d_compras'],          name: 'Carla',   createdAt: '2026-03-10', lastActive: '2026-04-17' },
+    { id: 'u_diego',  tenantId: 't_muito', email: 'diego@muito.work',   role: 'operator', deptIds: ['d_ventas'],           name: 'Diego',   createdAt: '2026-03-15', lastActive: '2026-04-16' },
+    { id: 'u_elena',  tenantId: 't_muito', email: 'elena@muito.work',   role: 'admin',    deptIds: ['d_compras','d_ops'],  name: 'Elena',   createdAt: '2026-04-01', lastActive: '2026-04-19' },
+    { id: 'u_felipe', tenantId: 't_muito', email: 'felipe@muito.work',  role: 'operator', deptIds: ['d_ventas'],           name: 'Felipe',  createdAt: '2026-04-05', lastActive: '2026-04-15' }
+  ],
+
+  /* ─── 3. departments ────────────────────────────── */
+  departments: [
+    { id: 'd_ops',     tenantId: 't_muito', name: 'Operaciones' },
+    { id: 'd_ventas',  tenantId: 't_muito', name: 'Ventas' },
+    { id: 'd_compras', tenantId: 't_muito', name: 'Compras' }
+  ],
+
+  /* ─── 4. businessEntities ───────────────────────── */
+  businessEntities: [
+    { id: 'be_acme_mx',   tenantId: 't_muito', name: 'ACME Industrias MX',    kind: 'customer', country: 'MX' },
+    { id: 'be_constru_co',tenantId: 't_muito', name: 'Construcciones Bogotá', kind: 'customer', country: 'CO' },
+    { id: 'be_marluvas',  tenantId: 't_muito', name: 'Marluvas',              kind: 'supplier', country: 'BR' },
+    { id: 'be_tecmater',  tenantId: 't_muito', name: 'Tecmater',              kind: 'supplier', country: 'BR' }
+  ],
+
+  /* ─── 5. agents ─────────────────────────────────── */
+  agents: [
+    {
+      id: 'ag_cotizador', tenantId: 't_muito', name: 'Cotizador Calzado',
+      autonomy: 'L1', unlockCriterion: '≥10 runs nivel actual · ≥80% approval · ≥60% edit-light · ≤10% rejection · ≥14 días estables · Aprobación Tenant Owner',
+      thermometer: { value: 6, state: 'hot' },
+      tier: 'demo-critical',
+      kpis: { runs30d: 43, approvalRate: 0.67, avgLatencyMin: 12, failRate: 0.07, costUSD30d: 21.40 },
+      skills: ['sk_cotizar','sk_specs_tecnicas','sk_stock_lookup'],
+      state: 'running',
+      triggerWord: '/cotizar',
+      memory: { runSession: 12, orgAccount: 34, curated: 8 }
+    },
+    {
+      id: 'ag_followup', tenantId: 't_muito', name: 'Follow-up Post-cotización',
+      autonomy: 'L0', unlockCriterion: 'Pendiente ≥3 runs SHADOW + >70% approval',
+      thermometer: { value: 1, state: 'cold' },
+      tier: 'experimental',
+      kpis: { runs30d: 8, approvalRate: 0, avgLatencyMin: 6, failRate: 0, costUSD30d: 2.10 },
+      skills: ['sk_followup'],
+      state: 'shadow',
+      triggerWord: '/followup',
+      memory: { runSession: 3, orgAccount: 0, curated: 0 }
+    },
+    {
+      id: 'ag_bant', tenantId: 't_muito', name: 'BANT Qualifier',
+      autonomy: 'L2', unlockCriterion: 'N/A (ya en L2)',
+      thermometer: { value: 4, state: 'warm' },
+      tier: 'hot',
+      kpis: { runs30d: 62, approvalRate: 0.84, avgLatencyMin: 4, failRate: 0.03, costUSD30d: 11.80 },
+      skills: ['sk_bant'],
+      state: 'running',
+      triggerWord: '/bant',
+      memory: { runSession: 18, orgAccount: 41, curated: 12 }
+    },
+    {
+      id: 'ag_summarizer', tenantId: 't_muito', name: 'Summarizer Interno',
+      autonomy: 'L3', unlockCriterion: 'N/A (ya en L3)',
+      thermometer: { value: 3, state: 'warm' },
+      tier: 'internal',
+      kpis: { runs30d: 104, approvalRate: 0.91, avgLatencyMin: 2, failRate: 0.02, costUSD30d: 6.40 },
+      skills: ['sk_summarize'],
+      state: 'running',
+      triggerWord: '(interno)',
+      memory: { runSession: 22, orgAccount: 18, curated: 5 }
+    },
+    {
+      id: 'ag_triage', tenantId: 't_muito', name: 'Triage Soporte',
+      autonomy: 'L4', unlockCriterion: 'Reserved — flujo ultra-estrecho validado',
+      thermometer: { value: 2, state: 'cold' },
+      tier: 'hot',
+      kpis: { runs30d: 214, approvalRate: 0.96, avgLatencyMin: 1, failRate: 0.01, costUSD30d: 4.20 },
+      skills: ['sk_triage'],
+      state: 'running',
+      triggerWord: '(auto)',
+      memory: { runSession: 18, orgAccount: 9, curated: 3 }
+    },
+    {
+      id: 'ag_pipeline', tenantId: 't_muito', name: 'Pipeline Seguimiento',
+      autonomy: 'L1', unlockCriterion: '≥10 runs nivel actual · ≥80% approval',
+      thermometer: { value: 2, state: 'cold' },
+      tier: 'cold',
+      kpis: { runs30d: 19, approvalRate: 0.58, avgLatencyMin: 8, failRate: 0.11, costUSD30d: 3.20 },
+      skills: ['sk_pipeline'],
+      state: 'idle',
+      triggerWord: '/pipeline',
+      memory: { runSession: 4, orgAccount: 7, curated: 1 }
+    },
+    {
+      id: 'ag_saludo', tenantId: 't_muito', name: 'Hola Cliente',
+      autonomy: 'L2', unlockCriterion: 'N/A',
+      thermometer: { value: 0, state: 'cold' },
+      tier: 'cold',
+      kpis: { runs30d: 31, approvalRate: 0.89, avgLatencyMin: 1, failRate: 0.01, costUSD30d: 1.10 },
+      skills: ['sk_hola'],
+      state: 'running',
+      triggerWord: '/hola',
+      memory: { runSession: 6, orgAccount: 2, curated: 0 }
+    }
+  ],
+
+  /* ─── 6. skills ─────────────────────────────────── */
+  skills: {
+    sk_cotizar: {
+      id: 'sk_cotizar', name: 'Cotizar calzado seguridad',
+      temperature: 6, temperatureState: 'hot',
+      base: {
+        version: '1.0.3', sealed: true, author: 'faberloom',
+        systemPrompt: 'Sos un asistente que genera cotizaciones B2B de calzado de seguridad para empresas LATAM (Marluvas / Tecmater). Siempre:\n- Validar stock antes de prometer plazo.\n- Citar evidencia de toda fuente de datos con [cN].\n- Aplicar normas ASTM F2413 / EN ISO 20345 según país.\n- Respetar private-by-default: no mezclar datos entre clientes.',
+        policies: ['draft-first-absoluto','action-risk-check','provenance-required','private-by-default'],
+        tools: ['stock_lookup','price_table','astm_matcher']
+      },
+      manualOverlays: [
+        { id: 'mo_1', rule: 'Si cliente en MX, usar tabla MXN y añadir IVA 16%', author: 'u_alvaro', createdAt: '2026-03-02' },
+        { id: 'mo_2', rule: 'Marluvas stock priority sobre Tecmater para Goliath/Velox', author: 'u_alvaro', createdAt: '2026-03-15' },
+        { id: 'mo_3', rule: 'Nunca prometer plazo <5 días sin check de stock real', author: 'u_ana',    createdAt: '2026-04-01' },
+        { id: 'mo_4', rule: 'Si solicita ASTM F2413, validar composite vs steel toe', author: 'u_alvaro', createdAt: '2026-04-10' }
+      ],
+      learnedPatterns: [
+        { id: 'lp_1', pattern: 'Consolidar "Velox 350" en línea única con qty ajustada', evidenceCount: 7, firstSeen: '2026-04-05', lastSeen: '2026-04-18', status: 'pending', ttlDays: 90 },
+        { id: 'lp_2', pattern: 'Cláusula de plazo variable cuando supplier = Marluvas',     evidenceCount: 5, firstSeen: '2026-04-08', lastSeen: '2026-04-17', status: 'pending', ttlDays: 90 },
+        { id: 'lp_3', pattern: 'En MX siempre incluir retención ISR si monto > 50k',          evidenceCount: 6, firstSeen: '2026-04-10', lastSeen: '2026-04-19', status: 'pending', ttlDays: 90 },
+        { id: 'lp_4', pattern: 'Priorizar Goliath XT para construcción, Velox para industria', evidenceCount: 4, firstSeen: '2026-04-12', lastSeen: '2026-04-18', status: 'pending', ttlDays: 90 },
+        { id: 'lp_5', pattern: 'Adjuntar ficha técnica PDF cuando cliente = construcción',     evidenceCount: 3, firstSeen: '2026-04-14', lastSeen: '2026-04-19', status: 'pending', ttlDays: 90 },
+        { id: 'lp_6', pattern: 'Cerrar con call-to-action "confirmar pedido por este medio"',   evidenceCount: 3, firstSeen: '2026-04-15', lastSeen: '2026-04-18', status: 'pending', ttlDays: 90 }
+      ],
+      goldSamples: [
+        { id: 'gs_1', label: 'Cotización estándar MX · 20 pares Velox',   createdBy: 'u_alvaro', approvedAt: '2026-03-20' },
+        { id: 'gs_2', label: 'Cotización con retención ISR · 80 pares',   createdBy: 'u_alvaro', approvedAt: '2026-04-02' },
+        { id: 'gs_3', label: 'Cotización multi-modelo · Goliath + Velox', createdBy: 'u_ana',    approvedAt: '2026-04-11' }
+      ]
+    },
+    sk_followup: {
+      id: 'sk_followup', name: 'Follow-up post-cotización',
+      temperature: 1, temperatureState: 'cold',
+      base: { version: '0.2.0', sealed: true, author: 'faberloom', systemPrompt: 'Follow-up ligero a los 7 días si el prospecto no respondió...', policies: ['draft-first-absoluto'], tools: [] },
+      manualOverlays: [],
+      learnedPatterns: [],
+      goldSamples: []
+    },
+    sk_bant: {
+      id: 'sk_bant', name: 'BANT Qualifier',
+      temperature: 4, temperatureState: 'warm',
+      base: { version: '1.2.1', sealed: true, author: 'faberloom', systemPrompt: 'Clasificás leads con BANT: Budget, Authority, Need, Timeline...', policies: ['draft-first-absoluto'], tools: ['crm_read'] },
+      manualOverlays: [ { id: 'mo_b1', rule: 'Si budget <10k USD, marcar cold sin Budget explícito', author: 'u_ana', createdAt: '2026-03-12' } ],
+      learnedPatterns: [
+        { id: 'lp_b1', pattern: 'Authority ambigua → pregunta directa "¿quién decide?"', evidenceCount: 4, firstSeen: '2026-04-08', lastSeen: '2026-04-17', status: 'pending', ttlDays: 90 }
+      ],
+      goldSamples: []
+    }
+  },
+
+  /* ─── 7. drafts ─────────────────────────────────── */
+  drafts: [
+    {
+      id: 'dr_001', agentId: 'ag_cotizador', tenantId: 't_muito',
+      state: 'awaiting_approval', createdAt: '2026-04-19T09:12:00-06:00',
+      businessEntityId: 'be_acme_mx',
+      subject: 'Cotización pedido 14 pares Velox 350 + 8 pares Goliath XT',
+      recipient: { name: 'Raúl Méndez', email: 'raul.mendez@acme.com.mx' },
+      body:
+        'Estimado Raúl,\n\n' +
+        'Adjunto cotización para el pedido consultado. Stock disponible Velox 350: 48 unidades [c1] · Goliath XT: 22 unidades [c2].\n\n' +
+        'Plazo de entrega: 7 días hábiles [c3] desde confirmación. Aplicamos norma ASTM F2413 composite toe [c4].\n\n' +
+        'Total: MXN 42,380 + IVA 16% = MXN 49,161 [c5]. Aplica retención ISR si supera 50k MXN [c6].\n\n' +
+        'Quedo a la espera.\nÁlvaro',
+      claims: [
+        { id: 'c1', text: 'Stock disponible Velox 350: 48 unidades', evidence: [
+          { id: 'e1', source: 'stock_lookup', sourceVersion: '2026-04-19T08:00:00Z', line: 'V350-M: 48', retrievalRunId: 'r_881' }
+        ]},
+        { id: 'c2', text: 'Stock Goliath XT: 22 unidades', evidence: [
+          { id: 'e2', source: 'stock_lookup', sourceVersion: '2026-04-19T08:00:00Z', line: 'GXT-L: 22', retrievalRunId: 'r_881' }
+        ]},
+        { id: 'c3', text: 'Plazo de entrega 7 días hábiles', evidence: [
+          { id: 'e3', source: 'policy_playbook', sourceVersion: '1.2.0', line: 'MX plazo default = 7d', retrievalRunId: 'r_881' }
+        ]},
+        { id: 'c4', text: 'Norma ASTM F2413 composite toe', evidence: [
+          { id: 'e4', source: 'astm_matcher', sourceVersion: '2025-11', line: 'F2413 CT OK', retrievalRunId: 'r_881' }
+        ]},
+        { id: 'c5', text: 'Total MXN 42,380 + IVA 16%', evidence: [
+          { id: 'e5', source: 'price_table', sourceVersion: '2026-04-01', line: 'V350:1800 GXT:2120', retrievalRunId: 'r_881' }
+        ]},
+        { id: 'c6', text: 'Retención ISR si > 50k MXN', evidence: [
+          { id: 'e6', source: 'policy_playbook', sourceVersion: '1.2.0', line: 'MX ISR umbral 50k', retrievalRunId: 'r_881' }
+        ]}
+      ],
+      action: {
+        actionId: 'send_email_quote',
+        reversibility: 'reversible_24h',
+        side_effects: ['external_send','crm_log'],
+        min_autonomy: 'L1',
+        required_role: 'operator',
+        audit_class: 'commercial'
+      },
+      workflowTrace: [
+        { step: 1, node: 'trigger:rfq_received',      ts: '09:10:00', status: 'done',    actor: 'system' },
+        { step: 2, node: 'retrieve:stock_lookup',     ts: '09:10:12', status: 'done',    actor: 'agent' },
+        { step: 3, node: 'retrieve:price_table',      ts: '09:10:14', status: 'done',    actor: 'agent' },
+        { step: 4, node: 'llm:compose_draft',         ts: '09:11:32', status: 'done',    actor: 'agent' },
+        { step: 5, node: 'validator:provenance_check',ts: '09:11:48', status: 'done',    actor: 'system' },
+        { step: 6, node: 'hitl:awaiting_approval',    ts: '09:12:00', status: 'active',  actor: 'human' },
+        { step: 7, node: 'action:send_email',         ts: null,       status: 'pending', actor: 'system' }
+      ],
+      modelFingerprint: {
+        provider: 'anthropic',
+        model_family: 'claude',
+        model_version: 'claude-opus-4-7',
+        system_prompt_hash: 'sha256:b2f9...12a4',
+        tools_manifest_hash: 'sha256:87c1...eaa0',
+        policy_version: '1.2.0',
+        retrieval_index_version: '2026-04-19-v3'
+      }
+    },
+    { id:'dr_002', agentId:'ag_cotizador', tenantId:'t_muito', state:'awaiting_approval', createdAt:'2026-04-19T10:14:00-06:00', subject:'Cotización 40 pares Goliath L Bogotá', recipient:{name:'Sofía Bello',email:'sofia@construcciones.co'}, action:{actionId:'send_email_quote',reversibility:'reversible_24h',min_autonomy:'L1',required_role:'operator',audit_class:'commercial'} },
+    { id:'dr_003', agentId:'ag_bant',      tenantId:'t_muito', state:'approved',          createdAt:'2026-04-19T08:42:00-06:00', subject:'Clasificación BANT · Cliente Monterrey', recipient:{name:'internal', email:'—'}, action:{actionId:'update_crm_bant',reversibility:'reversible_24h',min_autonomy:'L2',required_role:'operator',audit_class:'operational'} },
+    { id:'dr_004', agentId:'ag_followup',  tenantId:'t_muito', state:'drafting',          createdAt:'2026-04-19T11:02:00-06:00', subject:'Follow-up a Arequipa industrial', recipient:{name:'—',email:'—'}, action:{actionId:'send_email_nurture',reversibility:'reversible_24h',min_autonomy:'L1',required_role:'operator',audit_class:'commercial'} },
+    { id:'dr_005', agentId:'ag_cotizador', tenantId:'t_muito', state:'executing',         createdAt:'2026-04-18T16:30:00-06:00', subject:'Cotización urgente 120 pares Marluvas',      recipient:{name:'C. Ortega',email:'ortega@minera.mx'},     action:{actionId:'send_email_quote',reversibility:'reversible_24h',min_autonomy:'L1',required_role:'operator',audit_class:'commercial'} },
+    { id:'dr_006', agentId:'ag_triage',    tenantId:'t_muito', state:'completed',         createdAt:'2026-04-18T14:21:00-06:00', subject:'Ticket 4412 · Ruteo L2',                     recipient:{name:'internal',email:'—'},                     action:{actionId:'route_ticket',reversibility:'reversible_24h',min_autonomy:'L4',required_role:'operator',audit_class:'operational'} },
+    { id:'dr_007', agentId:'ag_cotizador', tenantId:'t_muito', state:'waiting_external_signal', createdAt:'2026-04-19T09:40:00-06:00', subject:'Esperando stock fresh Velox',        recipient:{name:'(held)',email:'—'},                       action:{actionId:'send_email_quote',reversibility:'reversible_24h',min_autonomy:'L1',required_role:'operator',audit_class:'commercial'} },
+    { id:'dr_008', agentId:'ag_pipeline',  tenantId:'t_muito', state:'blocked',           createdAt:'2026-04-18T11:00:00-06:00', subject:'CRM desconectado — no puede actualizar',      recipient:{name:'internal',email:'—'},                     action:{actionId:'update_crm_stage',reversibility:'reversible_24h',min_autonomy:'L1',required_role:'operator',audit_class:'operational'} },
+    { id:'dr_009', agentId:'ag_bant',      tenantId:'t_muito', state:'failed',            createdAt:'2026-04-18T09:15:00-06:00', subject:'BANT · Bot fail: contact missing',           recipient:{name:'—',email:'—'},                             action:{actionId:'update_crm_bant',reversibility:'reversible_24h',min_autonomy:'L2',required_role:'operator',audit_class:'operational'} },
+    { id:'dr_010', agentId:'ag_cotizador', tenantId:'t_muito', state:'escalated',         createdAt:'2026-04-18T17:05:00-06:00', subject:'Cotización >500k — escalada a Owner',         recipient:{name:'BR Mining',email:'p.silva@brmin.com.br'}, action:{actionId:'create_order_sap',reversibility:'irreversible_cost',min_autonomy:'L3',required_role:'admin',audit_class:'financial'} },
+    { id:'dr_011', agentId:'ag_cotizador', tenantId:'t_muito', state:'rejected',          createdAt:'2026-04-17T10:00:00-06:00', subject:'Rechazada · IVA mal calculado',               recipient:{name:'ACME MX',email:'raul.mendez@acme.com.mx'}, action:{actionId:'send_email_quote',reversibility:'reversible_24h',min_autonomy:'L1',required_role:'operator',audit_class:'commercial'} },
+    { id:'dr_012', agentId:'ag_summarizer',tenantId:'t_muito', state:'approved',          createdAt:'2026-04-19T07:50:00-06:00', subject:'Resumen daily #124',                          recipient:{name:'internal',email:'—'},                     action:{actionId:'write_kb_note',reversibility:'reversible_24h',min_autonomy:'L3',required_role:'operator',audit_class:'operational'} },
+    { id:'dr_013', agentId:'ag_cotizador', tenantId:'t_muito', state:'awaiting_approval', createdAt:'2026-04-19T11:25:00-06:00', subject:'Cotización 8 pares Velox Ant M',             recipient:{name:'G. Herrera',email:'gherrera@mineraperu.pe'}, action:{actionId:'send_email_quote',reversibility:'reversible_24h',min_autonomy:'L1',required_role:'operator',audit_class:'commercial'} },
+    { id:'dr_014', agentId:'ag_saludo',    tenantId:'t_muito', state:'completed',         createdAt:'2026-04-19T07:30:00-06:00', subject:'Saludo cliente nuevo · CL',                   recipient:{name:'Industria Chile',email:'contacto@indchile.cl'}, action:{actionId:'send_email_welcome',reversibility:'reversible_24h',min_autonomy:'L2',required_role:'operator',audit_class:'commercial'} }
+  ],
+
+  /* ─── 8. runs (agent_run) ───────────────────────── */
+  runs: (function(){
+    const arr = [];
+    const agents = ['ag_cotizador','ag_followup','ag_bant','ag_summarizer','ag_triage','ag_pipeline','ag_saludo'];
+    const states = ['completed','completed','completed','failed','completed','escalated','approved'];
+    for (let i = 0; i < 54; i++) {
+      const agentId = agents[i % agents.length];
+      const final   = states[i % states.length];
+      const started = '2026-04-' + (19 - Math.floor(i/8)) + 'T' + (8 + (i%10)) + ':' + (10 + i%50) + ':00-06:00';
+      arr.push({
+        id: 'run_' + (8800 + i), agentId, tenantId: 't_muito',
+        startedAt: started, endedAt: started.replace(':00-06:00', ':12-06:00'),
+        finalState: final,
+        tokensUsed: 1200 + (i * 37) % 4000,
+        costUSD: +(0.02 + (i % 9) * 0.04).toFixed(3),
+        tracesCount: 5 + (i % 4)
+      });
+    }
+    return arr;
+  })(),
+
+  /* ─── 9. consolidations (Candidate/Active/Archived/Reverted) */
+  consolidations: [
+    {
+      id: 'cons_1', skillId: 'sk_cotizar', status: 'candidate',
+      triggeredBy: 'thermometer_hot', triggeredAt: '2026-04-18T16:00:00-06:00',
+      patternCount: 6, accumulatedSince: '2026-04-05',
+      thermometer: 'hot', scope: 'skill', learnType: 'skill_refinement', crossSkill: false,
+      suggestedRule: 'Consolidar “Velox 350” y aplicar retención ISR condicional en MX cuando monto > 50k',
+      impactPreview: {
+        before: 'Genera 2 líneas separadas para Velox 350 y calcula total sin ISR en MX',
+        after:  'Consolida en línea única con qty ajustada + añade retención ISR si monto > 50k MXN'
+      }
+    },
+    { id: 'cons_2', skillId: 'sk_bant', status: 'candidate', triggeredBy: 'thermometer_warm', triggeredAt: '2026-04-17T12:00:00-06:00', patternCount: 4, thermometer: 'warm', scope: 'skill', learnType: 'skill_refinement', crossSkill: false, suggestedRule: 'Pregunta explícita de Authority cuando ambigua', impactPreview: { before: 'Asume Authority = sender', after: 'Pregunta "¿quién decide?"' } },
+    { id: 'cons_3', skillId: 'sk_cotizar', status: 'active', triggeredAt: '2026-03-22T10:00:00-06:00', patternCount: 5, scope: 'skill', learnType: 'skill_refinement', approvedBy: 'u_alvaro', approvedAt: '2026-03-23T15:00:00-06:00', suggestedRule: 'Marluvas priority para Goliath/Velox' },
+    { id: 'cons_4', skillId: 'sk_summarize', status: 'archived', triggeredAt: '2025-12-01', archivedAt: '2026-02-01', scope: 'skill', suggestedRule: 'Resumen ejecutivo ≤ 5 bullets' },
+    { id: 'cons_5', skillId: 'sk_cotizar', status: 'revoked', triggeredAt: '2026-01-15', revokedAt: '2026-02-10', scope: 'skill', suggestedRule: 'Descuento 15% default — REVERTED' }
+  ],
+
+  /* ─── 10. feedbacks (5 reasons per prompt) ──────── */
+  feedbacks: [
+    { id: 'fb_1', draftId: 'dr_011', userId: 'u_alvaro', reason: 'dato_incorrecto',     code: 'data',     note: 'IVA 16% mal aplicado — venía sobre base 42380 pero quedó 16.5', createdAt: '2026-04-17T11:20:00-06:00' },
+    { id: 'fb_2', draftId: 'dr_009', userId: 'u_ana',    reason: 'claim_sin_evidencia', code: 'data',     note: 'Afirmaba authority sin citar fuente',                         createdAt: '2026-04-18T09:30:00-06:00' },
+    { id: 'fb_3', draftId: 'dr_002', userId: 'u_alvaro', reason: 'tono',                code: 'tone',     note: 'Demasiado formal para Bogotá',                                 createdAt: '2026-04-17T15:40:00-06:00' },
+    { id: 'fb_4', draftId: 'dr_010', userId: 'u_alvaro', reason: 'accion_riesgosa',     code: 'policy',   note: 'Monto > 500k, escalar a Owner antes de SAP',                   createdAt: '2026-04-18T17:10:00-06:00' },
+    { id: 'fb_5', draftId: 'dr_005', userId: 'u_ana',    reason: 'otro',                code: 'context',  note: 'Falta incluir plazo específico Marluvas',                      createdAt: '2026-04-18T16:45:00-06:00' },
+    { id: 'fb_6', draftId: 'dr_012', userId: 'u_alvaro', reason: 'tono',                code: 'tone',     note: 'Puede ser más telegráfico',                                    createdAt: '2026-04-19T08:00:00-06:00' },
+    { id: 'fb_7', draftId: 'dr_008', userId: 'u_ana',    reason: 'accion_riesgosa',     code: 'policy',   note: 'CRM offline, no retry automático',                             createdAt: '2026-04-18T11:30:00-06:00' },
+    { id: 'fb_8', draftId: 'dr_004', userId: 'u_alvaro', reason: 'dato_incorrecto',     code: 'data',     note: 'Cliente era Arequipa no Lima',                                 createdAt: '2026-04-19T11:15:00-06:00' }
+  ],
+
+  /* ─── 11. auditEvents ─────────────────────────────── */
+  auditEvents: (function(){
+    const events = [];
+    const actions = [
+      'user.login','user.logout','user.role_changed','session.created','session.revoked',
+      'agent_spec.published','agent_spec.retired','agent_run.started','agent_run.completed',
+      'draft.generated','draft.approved','draft.rejected','draft.expired','draft.sent','draft.escalated',
+      'memory_chunk.created','memory_chunk.promoted','memory_chunk.superseded','memory_chunk.revoked',
+      'connector.enabled','connector.disabled','connector.revoked',
+      'policy.violation','secret.rotated','kek.access','backup.succeeded','backup.failed',
+      'job.succeeded','job.skipped','break_glass.activated','break_glass.expired'
+    ];
+    const actors = ['u_alvaro','u_ana','u_bruno','system'];
+    const severities = ['INFO','INFO','INFO','WARN','ERROR','POLICY'];
+    for (let i = 0; i < 64; i++) {
+      const action = actions[i % actions.length];
+      const ts = new Date(Date.now() - i * 37 * 60 * 1000).toISOString();
+      events.push({
+        id: 'ae_' + (3000 + i), ts, tenantId: 't_muito',
+        actor: actors[i % actors.length], action,
+        target: action.startsWith('draft') ? 'dr_' + (String(i % 14 + 1).padStart(3, '0')) :
+                action.startsWith('memory_chunk') ? 'mc_' + (200 + i) : null,
+        severity: severities[i % severities.length],
+        ip: '10.0.' + (i % 255) + '.' + ((i*7) % 255),
+        userAgent: 'FaberLoom/1.0 (' + (i % 2 === 0 ? 'Windows' : 'macOS') + ')'
+      });
+    }
+    return events;
+  })(),
+
+  /* ─── 12. actions (action-risk registry, 18 rows) ─ */
+  actions: [
+    { actionId: 'send_email_quote',     reversibility: 'reversible_24h',    side_effects: ['external_send','crm_log'], min_autonomy: 'L1', required_role: 'operator', audit_class: 'commercial' },
+    { actionId: 'send_email_nurture',   reversibility: 'reversible_24h',    side_effects: ['external_send'],             min_autonomy: 'L1', required_role: 'operator', audit_class: 'commercial' },
+    { actionId: 'send_email_welcome',   reversibility: 'reversible_24h',    side_effects: ['external_send'],             min_autonomy: 'L2', required_role: 'operator', audit_class: 'commercial' },
+    { actionId: 'create_order_sap',     reversibility: 'irreversible_cost', side_effects: ['erp_write','inventory_hold'],min_autonomy: 'L3', required_role: 'admin',    audit_class: 'financial' },
+    { actionId: 'update_crm_stage',     reversibility: 'reversible_24h',    side_effects: ['crm_log'],                   min_autonomy: 'L1', required_role: 'operator', audit_class: 'operational' },
+    { actionId: 'update_crm_bant',      reversibility: 'reversible_24h',    side_effects: ['crm_log'],                   min_autonomy: 'L2', required_role: 'operator', audit_class: 'operational' },
+    { actionId: 'route_ticket',         reversibility: 'reversible_24h',    side_effects: ['ticket_log'],                min_autonomy: 'L4', required_role: 'operator', audit_class: 'operational' },
+    { actionId: 'write_kb_note',        reversibility: 'reversible_24h',    side_effects: ['kb_write'],                  min_autonomy: 'L3', required_role: 'operator', audit_class: 'operational' },
+    { actionId: 'post_slack',           reversibility: 'reversible_24h',    side_effects: ['chat_broadcast'],            min_autonomy: 'L2', required_role: 'operator', audit_class: 'operational' },
+    { actionId: 'send_whatsapp',        reversibility: 'reversible_24h',    side_effects: ['external_send','customer_contact'], min_autonomy: 'L2', required_role: 'operator', audit_class: 'commercial' },
+    { actionId: 'trigger_refund',       reversibility: 'reversible_cost',   side_effects: ['financial_write'],            min_autonomy: 'L3', required_role: 'admin',    audit_class: 'financial' },
+    { actionId: 'close_won',            reversibility: 'reversible_cost',   side_effects: ['crm_stage_commit'],           min_autonomy: 'L2', required_role: 'operator', audit_class: 'commercial' },
+    { actionId: 'close_lost',           reversibility: 'reversible_24h',    side_effects: ['crm_stage_commit'],           min_autonomy: 'L2', required_role: 'operator', audit_class: 'commercial' },
+    { actionId: 'promote_memory',       reversibility: 'reversible_24h',    side_effects: ['kb_scope_change'],            min_autonomy: 'L0', required_role: 'admin',    audit_class: 'policy' },
+    { actionId: 'revoke_memory',        reversibility: 'reversible_24h',    side_effects: ['kb_scope_change'],            min_autonomy: 'L0', required_role: 'admin',    audit_class: 'policy' },
+    { actionId: 'break_glass_activate', reversibility: 'reversible_24h',    side_effects: ['privilege_escalation'],       min_autonomy: 'L0', required_role: 'owner',    audit_class: 'meta' },
+    { actionId: 'connector_enable',     reversibility: 'reversible_24h',    side_effects: ['config_change'],              min_autonomy: 'L0', required_role: 'admin',    audit_class: 'meta' },
+    { actionId: 'backup_restore',       reversibility: 'irreversible_cost', side_effects: ['data_rewind'],                min_autonomy: 'L0', required_role: 'owner',    audit_class: 'meta' }
+  ],
+
+  /* ─── 13. connectors ────────────────────────────── */
+  connectors: [
+    { id: 'co_postmark',  name: 'Postmark SMTP',     kind: 'email',           status: 'connected',    configuredAt: '2026-04-15', scope: 'S1' },
+    { id: 'co_gdrive',    name: 'Google Drive',      kind: 'kb_source',       status: 'connected',    configuredAt: '2026-04-16', scope: 'S2' },
+    { id: 'co_sapi',      name: 'Amazon SP-API',     kind: 'marketplace',     status: 'disconnected', scope: 'v1.5' },
+    { id: 'co_helium10',  name: 'Helium 10',         kind: 'marketplace_intel', status: 'disconnected', scope: 'v1.5' },
+    { id: 'co_whatsapp',  name: 'WhatsApp BSP',      kind: 'messaging',       status: 'planned', scope: 'S4' }
+  ],
+
+  /* ─── 14. policies ──────────────────────────────── */
+  policies: [
+    { id: 'pol_private_default', scope: 'intra_org',   rule: 'All memory_chunk with scope=user is invisible to admin unless break_glass', enforced: true, since: '2026-01-01' },
+    { id: 'pol_break_glass_8h',  scope: 'auth',        rule: 'Break-glass session expires at 8h with MFA', enforced: true, since: '2026-01-01' },
+    { id: 'pol_draft_first',     scope: 'workflow',    rule: 'No external action without drafting → awaiting_approval → approved', enforced: true, since: '2026-01-01' },
+    { id: 'pol_provenance',      scope: 'workflow',    rule: 'Every claim must carry evidence_span + source_version', enforced: true, since: '2026-02-01' },
+    { id: 'pol_risk_check',      scope: 'workflow',    rule: 'Irreversible actions require min_autonomy ≥ L3 + admin role', enforced: true, since: '2026-02-15' },
+    { id: 'pol_ttl_default',     scope: 'skill',       rule: 'Learned overlay TTL default 90d, configurable 30-180 per skill', enforced: true, since: '2026-03-01' },
+    { id: 'pol_leakage_gate',    scope: 'ci',          rule: 'tests/leakage/ pytest suite green = DoD for any PR touching ACL/RLS/memory_chunk', enforced: true, since: '2026-03-15' },
+    { id: 'pol_audit_append',    scope: 'data',        rule: 'audit_event UPDATE/DELETE denied to faber_app — strict append-only', enforced: true, since: '2026-01-01' },
+    { id: 'pol_chunk_versioned', scope: 'data',        rule: 'memory_chunk: content immutable; supersede via supersedes_chunk_id + new row', enforced: true, since: '2026-01-01' },
+    { id: 'pol_sanitize_promote',scope: 'promotion',   rule: 'PII regex scan + redacción nombres propios pre-promote; review humano si confidence <0.95', enforced: true, since: '2026-03-15' },
+    { id: 'pol_ceo_unlock',      scope: 'autonomy',    rule: 'Tenant Owner approval required for every autonomy-level promotion', enforced: true, since: '2026-01-15' },
+    { id: 'pol_shadow_start',    scope: 'autonomy',    rule: 'All skills start in L0 SHADOW; advance requires ≥3 runs + >70% approval', enforced: true, since: '2026-01-15' }
+  ],
+
+  /* ─── 15. jobs ──────────────────────────────────── */
+  jobs: [
+    { name: 'consolidation_eval',  scheduledFor: '2026-04-19T00:00:00-06:00', status: 'completed', durationSec: 42,  host: 'worker-01' },
+    { name: 'leakage_tests',       scheduledFor: '2026-04-19T03:00:00-06:00', status: 'completed', durationSec: 128, host: 'ci-runner-02' },
+    { name: 'backup_snapshot',     scheduledFor: '2026-04-19T04:00:00-06:00', status: 'completed', durationSec: 310, host: 'backup-01' },
+    { name: 'expire_drafts',       scheduledFor: '2026-04-19T11:25:00-06:00', status: 'completed', durationSec: 3,   host: 'worker-01' },
+    { name: 'purge_audit_info',    scheduledFor: '2026-04-18T02:00:00-06:00', status: 'completed', durationSec: 52,  host: 'worker-02' },
+    { name: 'vector_reindex',      scheduledFor: '2026-04-18T04:30:00-06:00', status: 'completed', durationSec: 410, host: 'worker-01' },
+    { name: 'consolidation_eval',  scheduledFor: '2026-04-18T00:00:00-06:00', status: 'completed', durationSec: 38,  host: 'worker-01' },
+    { name: 'leakage_tests',       scheduledFor: '2026-04-18T03:00:00-06:00', status: 'completed', durationSec: 124, host: 'ci-runner-02' },
+    { name: 'backup_snapshot',     scheduledFor: '2026-04-18T04:00:00-06:00', status: 'completed', durationSec: 298, host: 'backup-01' },
+    { name: 'expire_drafts',       scheduledFor: '2026-04-19T11:30:00-06:00', status: 'running',   durationSec: null, host: 'worker-01' }
+  ],
+
+  /* ─── 16. alerts ────────────────────────────────── */
+  alerts: [
+    { id: 'al_1', severity: 'warn',  title: 'p95 retrieval 310ms (>300ms SLO)', since: '2026-04-19T08:00:00-06:00' },
+    { id: 'al_2', severity: 'info',  title: 'Consolidation candidate pending (sk_cotizar · termómetro caliente)', since: '2026-04-18T16:00:00-06:00' },
+    { id: 'al_3', severity: 'info',  title: 'Outbox backlog 120 (umbral 500)', since: '2026-04-19T10:00:00-06:00' }
+  ],
+
+  /* ─── 17. tables (20 FROZEN) ────────────────────── */
+  tables: [
+    { name: 'tenant',                sprint: 'S1', rowCount: 3,   sizeKB: 2 },
+    { name: 'user_account',          sprint: 'S1', rowCount: 7,   sizeKB: 4 },
+    { name: 'department',            sprint: 'S1', rowCount: 3,   sizeKB: 1 },
+    { name: 'user_department',       sprint: 'S1', rowCount: 9,   sizeKB: 2 },
+    { name: 'session',               sprint: 'S1', rowCount: 18,  sizeKB: 5 },
+    { name: 'event_outbox',          sprint: 'S1', rowCount: 42,  sizeKB: 12 },
+    { name: 'inbox_message',         sprint: 'S1', rowCount: 128, sizeKB: 48 },
+    { name: 'audit_event',           sprint: 'S1', rowCount: 64,  sizeKB: 22 },
+    { name: 'job_execution',         sprint: 'S1', rowCount: 10,  sizeKB: 3 },
+    { name: 'agent_spec',            sprint: 'S2', rowCount: 7,   sizeKB: 18 },
+    { name: 'agent_binding',         sprint: 'S2', rowCount: 7,   sizeKB: 3 },
+    { name: 'agent_run',             sprint: 'S2', rowCount: 54,  sizeKB: 32 },
+    { name: 'memory_source',         sprint: 'S2', rowCount: 21,  sizeKB: 14 },
+    { name: 'memory_chunk',          sprint: 'S2', rowCount: 184, sizeKB: 246 },
+    { name: 'memory_chunk_vector',   sprint: 'S2', rowCount: 184, sizeKB: 1420 },
+    { name: 'overlay_policy',        sprint: 'S2', rowCount: 12,  sizeKB: 6 },
+    { name: 'draft',                 sprint: 'S3', rowCount: 14,  sizeKB: 9 },
+    { name: 'draft_decision',        sprint: 'S3', rowCount: 12,  sizeKB: 4 },
+    { name: 'connector_account',     sprint: 'S3', rowCount: 2,   sizeKB: 1 },
+    { name: 'connector_send_log',    sprint: 'S3', rowCount: 38,  sizeKB: 11 }
+  ],
+
+  /* ═══════════════════════════════════════════════════════════════
+     [V2-PATCH 2026-04-19] · Chat module data extensions (§v2-3.3)
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* ─── 18. conversations (8 conversations) ─── */
+  conversations: [
+    { id:'cv_001', tenantId:'t_muito', agentId:'ag_cotizador', title:'Cotización 500 pares Marluvas Goliath · ACME MX', activeSkills:['sk_cotizar','sk_specs_tecnicas'], startedAt:'2026-04-19T09:00:00-06:00', lastMessageAt:'2026-04-19T09:14:00-06:00', messageCount:6, state:'active' },
+    { id:'cv_002', tenantId:'t_muito', agentId:'ag_cotizador', title:'Cotización urgente 120 pares · Minera MX',          activeSkills:['sk_cotizar'],                    startedAt:'2026-04-18T16:10:00-06:00', lastMessageAt:'2026-04-18T16:19:00-06:00', messageCount:8, state:'active' },
+    { id:'cv_003', tenantId:'t_muito', agentId:'ag_bant',      title:'Consolidación feedback última semana',              activeSkills:['sk_consolidate'],                startedAt:'2026-04-18T10:00:00-06:00', lastMessageAt:'2026-04-18T11:05:00-06:00', messageCount:5, state:'active' },
+    { id:'cv_004', tenantId:'t_muito', agentId:'ag_pipeline',  title:'Sourcing Tecmater Velox · stock Colombia',          activeSkills:['sk_sourcing','sk_stock_lookup'], startedAt:'2026-04-19T08:15:00-06:00', lastMessageAt:'2026-04-19T08:48:00-06:00', messageCount:7, state:'active' },
+    { id:'cv_005', tenantId:'t_muito', agentId:'ag_pipeline',  title:'Sourcing calzado dieléctrico Perú',                 activeSkills:['sk_sourcing'],                   startedAt:'2026-04-17T14:30:00-06:00', lastMessageAt:'2026-04-17T15:10:00-06:00', messageCount:6, state:'completed' },
+    { id:'cv_006', tenantId:'t_muito', agentId:'ag_triage',    title:'Customer support ticket 4412 · respuesta L2',       activeSkills:['sk_triage'],                     startedAt:'2026-04-18T14:00:00-06:00', lastMessageAt:'2026-04-18T14:25:00-06:00', messageCount:5, state:'completed' },
+    { id:'cv_007', tenantId:'t_muito', agentId:'ag_cotizador', title:'Verificar cumplimiento política POL_MX_001',        activeSkills:['sk_compliance'],                 startedAt:'2026-04-19T11:00:00-06:00', lastMessageAt:'2026-04-19T11:12:00-06:00', messageCount:4, state:'active' },
+    { id:'cv_008', tenantId:'t_muito', agentId:'ag_summarizer',title:'Resumen pipeline Colombia Q1 · archivado',          activeSkills:['sk_summarize'],                  startedAt:'2026-03-15T10:00:00-06:00', lastMessageAt:'2026-03-15T10:20:00-06:00', messageCount:3, state:'archived' }
+  ],
+
+  /* ─── 19. messages (~50 messages) ─── */
+  messages: [
+    // cv_001 — demo-critical conversation
+    { id:'msg_001', conversationId:'cv_001', role:'user',  content:'Necesito una cotización para 500 pares Marluvas Goliath XT talla 42, cliente ACME Industrias MX. Plazo máximo 10 días.', timestamp:'2026-04-19T09:00:00-06:00' },
+    { id:'msg_002', conversationId:'cv_001', role:'agent', content:'Procesando tu pedido [E1]:\n\n- Modelo: Goliath XT talla 42\n- Cantidad: 500 pares\n- Cliente: ACME Industrias MX\n- Plazo solicitado: 10 días\n\nStock Marluvas: 520 unidades [E2]. Plazo estándar MX: 7 días hábiles [E3]. Precio unitario: MXN 2,120 [E4].\n\nTotal: MXN 1,060,000 + IVA 16% = MXN 1,229,600 [E5]. Aplica retención ISR (>50k MXN) [E6].\n\n¿Genero draft para aprobación?', timestamp:'2026-04-19T09:01:30-06:00',
+      evidenceSpans:[
+        {id:'e1',source:'conversation_context', sourceVersion:'inline',            line:'user.message[1]',     retrievalRunId:'r_cv001_1', score:1.00, title:'Solicitud del usuario'},
+        {id:'e2',source:'stock_lookup',         sourceVersion:'2026-04-19T08:00Z', line:'GXT-42:520',           retrievalRunId:'r_cv001_1', score:0.98, title:'Stock Marluvas Goliath XT'},
+        {id:'e3',source:'policy_playbook',      sourceVersion:'1.2.0',             line:'MX plazo default = 7d',retrievalRunId:'r_cv001_1', score:0.95, title:'Política plazo MX'},
+        {id:'e4',source:'price_table',          sourceVersion:'2026-04-01',        line:'GXT-42:2120',          retrievalRunId:'r_cv001_1', score:1.00, title:'Lista precios 2026 Q1'},
+        {id:'e5',source:'policy_playbook',      sourceVersion:'1.2.0',             line:'MX IVA 16%',            retrievalRunId:'r_cv001_1', score:1.00, title:'IVA MX'},
+        {id:'e6',source:'policy_playbook',      sourceVersion:'1.2.0',             line:'MX ISR umbral 50k',     retrievalRunId:'r_cv001_1', score:0.92, title:'Retención ISR MX'}
+      ], patternBadge:{kind:'learned',count:14}, modelFingerprint:{provider:'anthropic',model_family:'claude',model_version:'claude-opus-4-7',system_prompt_hash:'sha256:b2f9...12a4',tools_manifest_hash:'sha256:87c1...eaa0',policy_version:'1.2.0',retrieval_index_version:'2026-04-19-v3'} },
+    { id:'msg_003', conversationId:'cv_001', role:'user',  content:'Sí, generá el draft. Y validá descuento por volumen 500+.', timestamp:'2026-04-19T09:02:10-06:00' },
+    { id:'msg_004', conversationId:'cv_001', role:'agent', content:'Draft generado: dr_042. Sobre volumen: la política [E1] otorga 8% descuento desde 300 unidades. Ajusté el draft aplicándolo.\n\nNuevo total: MXN 1,060,000 − 8% = MXN 975,200 + IVA 16% = MXN 1,131,232 [E2].\n\nStatus: <strong>awaiting_approval</strong>. Abrí el draft para revisar.', timestamp:'2026-04-19T09:03:40-06:00', draftIds:['dr_042'],
+      evidenceSpans:[
+        {id:'e1',source:'policy_playbook',  sourceVersion:'1.2.0',      line:'volumen ≥300u → 8%',                     retrievalRunId:'r_cv001_2', score:1.00, title:'Política descuento volumen'},
+        {id:'e2',source:'llm_computation',  sourceVersion:'inline',     line:'1060000 * 0.92 * 1.16 = 1131232',        retrievalRunId:'r_cv001_2', score:1.00, title:'Cálculo final'}
+      ], patternBadge:{kind:'gold',rating:9} },
+    { id:'msg_005', conversationId:'cv_001', role:'user',  content:'El plazo de 7 días es factible con la compra actual? Marluvas a veces tarda más.', timestamp:'2026-04-19T09:05:20-06:00' },
+    { id:'msg_006', conversationId:'cv_001', role:'agent', content:'Verifiqué el registro de entregas Marluvas últimos 60 días [E1]:\n\n- Plazo promedio: 8.4 días\n- p90: 11 días\n- Entregas <7 días: 34%\n\nEs riesgoso prometer 7 días. Recomiendo <strong>9-10 días hábiles</strong> con cláusula de actualización si el supplier confirma antes.\n\n¿Ajusto el draft?', timestamp:'2026-04-19T09:14:00-06:00',
+      evidenceSpans:[
+        {id:'e1',source:'supplier_delivery_log', sourceVersion:'2026-04-19T00:00Z', line:'marluvas_60d:avg=8.4,p90=11', retrievalRunId:'r_cv001_3', score:1.00, title:'Registro entregas Marluvas 60d'}
+      ], patternBadge:{kind:'learned',count:5} },
+
+    // cv_002 — urgente 120 pares + iteration demo
+    { id:'msg_010', conversationId:'cv_002', role:'user',  content:'Urgente: cotización 120 pares Marluvas Velox 350 para Minera MX, entrega esta semana.', timestamp:'2026-04-18T16:10:00-06:00' },
+    { id:'msg_011', conversationId:'cv_002', role:'agent', content:'Stock Velox 350: 48 unidades [E1]. Faltan 72. Opciones:\n\n1. Parcial 48 esta semana + 72 en 5-7 días (stock fresh Marluvas) [E2]\n2. Tecmater Velox alternativa, 120 disponibles, plazo 3 días [E3]\n\n¿Cuál?', timestamp:'2026-04-18T16:12:30-06:00',
+      evidenceSpans:[
+        {id:'e1',source:'stock_lookup',      sourceVersion:'2026-04-18T16:00Z', line:'V350-M:48',          retrievalRunId:'r_cv002_1', score:1.00, title:'Stock Velox 350 Marluvas'},
+        {id:'e2',source:'supplier_schedule', sourceVersion:'2026-04-18',         line:'marluvas_fresh:5-7d', retrievalRunId:'r_cv002_1', score:0.90, title:'Plazo fresh'},
+        {id:'e3',source:'stock_lookup',      sourceVersion:'2026-04-18T16:00Z', line:'tecmater_velox:120',  retrievalRunId:'r_cv002_1', score:1.00, title:'Stock Tecmater'}
+      ], patternBadge:{kind:'none'} },
+    { id:'msg_012', conversationId:'cv_002', role:'user',  content:'Opción 2 pero solo si la calidad es equivalente. Check ASTM F2413.', timestamp:'2026-04-18T16:14:00-06:00' },
+    { id:'msg_013', conversationId:'cv_002', role:'agent', content:'Tecmater Velox cumple ASTM F2413 composite toe [E1]. Equivalencia técnica: 98% matching con Marluvas Velox 350 (mismo espesor planta, mismo impact rating I/75) [E2]. Diferencias: solo estéticas (color, logo).\n\nTotal 120 pares Tecmater Velox: MXN 216,000 + IVA = MXN 250,560 [E3]. Plazo: 3 días [E4].\n\n¿Genero draft?', timestamp:'2026-04-18T16:15:30-06:00',
+      evidenceSpans:[
+        {id:'e1',source:'astm_matcher',              sourceVersion:'2025-11',    line:'tecmater_velox:F2413_CT=true',                   retrievalRunId:'r_cv002_2', score:1.00, title:'ASTM F2413 Tecmater'},
+        {id:'e2',source:'product_equivalence_table', sourceVersion:'2026-02',    line:'marluvas_v350 vs tecmater_velox:0.98',           retrievalRunId:'r_cv002_2', score:0.95, title:'Tabla equivalencia'},
+        {id:'e3',source:'price_table',               sourceVersion:'2026-04-01', line:'tecmater_velox:1800',                            retrievalRunId:'r_cv002_2', score:1.00, title:'Precio Tecmater'},
+        {id:'e4',source:'supplier_schedule',         sourceVersion:'2026-04-18', line:'tecmater_mx:3d',                                 retrievalRunId:'r_cv002_2', score:0.98, title:'Plazo Tecmater MX'}
+      ], patternBadge:{kind:'learned',count:8} },
+    { id:'msg_013b', conversationId:'cv_002', role:'agent', content:'Versión iterada (lenguaje simple):\n\nTecmater Velox = Marluvas Velox 350 (equivalente 98%, mismo ASTM F2413). Diferencias solo estéticas.\n\nTotal: MXN 250,560 IVA incluido. Entrega: 3 días.\n\n¿Genero draft?', timestamp:'2026-04-18T16:16:15-06:00', iterationOf:'msg_013', patternBadge:{kind:'none'} },
+    { id:'msg_014', conversationId:'cv_002', role:'user',  content:'Sí, generá', timestamp:'2026-04-18T16:16:00-06:00' },
+    { id:'msg_015', conversationId:'cv_002', role:'agent', content:'Draft dr_005 generado. Status: <strong>executing</strong> (auto-send habilitado, previo aprobación del cliente). SMS de seguimiento a Minera MX enviado.', timestamp:'2026-04-18T16:17:00-06:00', draftIds:['dr_005'], patternBadge:{kind:'gold',rating:10} },
+    { id:'msg_016', conversationId:'cv_002', role:'user',  content:'Mejor la versión iterada, más clara.', timestamp:'2026-04-18T16:18:00-06:00' },
+    { id:'msg_017', conversationId:'cv_002', role:'agent', content:'Pattern guardado: "lenguaje simple > técnico para Minera MX". Se aplica en próximas conversaciones con este cliente.', timestamp:'2026-04-18T16:19:00-06:00', patternBadge:{kind:'learned',count:1} },
+
+    // cv_003 — consolidación
+    { id:'msg_020', conversationId:'cv_003', role:'user',  content:'Consolidación del feedback última semana para skill cotización', timestamp:'2026-04-18T10:00:00-06:00' },
+    { id:'msg_021', conversationId:'cv_003', role:'agent', content:'Analicé 23 feedbacks desde 2026-04-12 [E1]:\n\n- Tono: 4 (17%)\n- Dato incorrecto: 3 (13%)\n- Claim sin evidencia: 2 (9%)\n- Acción riesgosa: 1 (4%)\n- Otro: 13 (57%)\n\n6 patrones candidatos [E2] — termómetro 🔴 Caliente.\n\n¿Abro Skill Studio o resumen inline?', timestamp:'2026-04-18T10:03:00-06:00',
+      evidenceSpans:[
+        {id:'e1',source:'feedback_db',      sourceVersion:'2026-04-18T09:00Z',  line:'feedbacks_last_7d:23',    retrievalRunId:'r_cv003_1', score:1.00, title:'Feedbacks última semana'},
+        {id:'e2',source:'pattern_detector', sourceVersion:'2026-04-17',         line:'sk_cotizar:6_candidates', retrievalRunId:'r_cv003_1', score:0.91, title:'Patrones candidatos'}
+      ], patternBadge:{kind:'learned',count:23} },
+    { id:'msg_022', conversationId:'cv_003', role:'user',  content:'Inline primero', timestamp:'2026-04-18T10:05:00-06:00' },
+    { id:'msg_023', conversationId:'cv_003', role:'agent', content:'Top 3 patrones:\n\n1. "Consolidar Velox 350 en línea única con qty ajustada" — 7 ev.\n2. "Añadir cláusula plazo variable supplier=Marluvas" — 5 ev.\n3. "Incluir retención ISR cuando monto>50k MX" — 6 ev.\n\nRecomiendo promover #1 y #3 a base; #2 necesita validación humana (depende de supplier).', timestamp:'2026-04-18T10:08:00-06:00', patternBadge:{kind:'gold',rating:8} },
+    { id:'msg_024', conversationId:'cv_003', role:'user',  content:'Ok, voy al Studio', timestamp:'2026-04-18T11:00:00-06:00' },
+
+    // cv_004 — sourcing CO
+    { id:'msg_030', conversationId:'cv_004', role:'user',  content:'Oportunidad 200 pares Tecmater Velox para Construcciones Bogotá. Check stock y precios CO.', timestamp:'2026-04-19T08:15:00-06:00' },
+    { id:'msg_031', conversationId:'cv_004', role:'agent', content:'Stock Tecmater Velox CO: 140 Bogotá + 80 en tránsito (ETA 6d) [E1]. Cubro 200.\n\nPrecio CO: COP 180,000/par [E2]. Total 200: COP 36M + IVA 19% = COP 42.84M [E3].\n\n¿Genero cotización?', timestamp:'2026-04-19T08:18:00-06:00',
+      evidenceSpans:[
+        {id:'e1',source:'stock_lookup_co',     sourceVersion:'2026-04-19T07:00Z', line:'tecmater_velox_bog:140+80', retrievalRunId:'r_cv004_1', score:1.00, title:'Stock Colombia'},
+        {id:'e2',source:'price_table_co',      sourceVersion:'2026-04-01',         line:'tecmater_velox_co:180000',  retrievalRunId:'r_cv004_1', score:1.00, title:'Precio CO'},
+        {id:'e3',source:'policy_playbook_co',  sourceVersion:'1.1.0',              line:'CO IVA 19%',                 retrievalRunId:'r_cv004_1', score:1.00, title:'IVA CO'}
+      ], patternBadge:{kind:'learned',count:4} },
+    { id:'msg_032', conversationId:'cv_004', role:'user',  content:'Descuento volumen?', timestamp:'2026-04-19T08:25:00-06:00' },
+    { id:'msg_033', conversationId:'cv_004', role:'agent', content:'En CO descuento volumen es 5% desde 150u [E1]. Aplica.\n\nTotal ajustado: COP 34.2M + IVA = COP 40.698M.\n\n(Diferencia vs MX: CO escalón único 5%, MX escalado hasta 12%.)', timestamp:'2026-04-19T08:28:00-06:00',
+      evidenceSpans:[
+        {id:'e1',source:'policy_playbook_co', sourceVersion:'1.1.0', line:'CO volumen>=150:5%', retrievalRunId:'r_cv004_2', score:1.00, title:'Descuento volumen CO'}
+      ], patternBadge:{kind:'gold',rating:9} },
+    { id:'msg_034', conversationId:'cv_004', role:'user',  content:'Bien. Genera draft y envía por correo.', timestamp:'2026-04-19T08:40:00-06:00' },
+    { id:'msg_035', conversationId:'cv_004', role:'agent', content:'Draft dr_cv004_1 generado. Status: <strong>awaiting_approval</strong>. El envío por correo es external_send → requiere aprobación humana (draft-first absoluto).\n\nAprobá desde la bandeja o acá mismo.', timestamp:'2026-04-19T08:42:00-06:00', draftIds:['dr_cv004_1'], patternBadge:{kind:'learned',count:2} },
+    { id:'msg_036', conversationId:'cv_004', role:'user',  content:'Aprobado', timestamp:'2026-04-19T08:48:00-06:00' },
+
+    // cv_005 — sourcing Perú dieléctrico
+    { id:'msg_040', conversationId:'cv_005', role:'user',  content:'Cliente minero Perú pide 80 pares calzado dieléctrico. Opciones.', timestamp:'2026-04-17T14:30:00-06:00' },
+    { id:'msg_041', conversationId:'cv_005', role:'agent', content:'Dieléctrico no es core [E1]. Opciones:\n\n1. Marluvas NovoAte con EH — 50 pares\n2. Tecmater TopSafe EH — 100 pares, plazo 7d desde BR\n3. Externo: Protex PE (sin deal pero 200+ stock)\n\n¿Opción 2?', timestamp:'2026-04-17T14:33:00-06:00',
+      evidenceSpans:[
+        {id:'e1',source:'catalog', sourceVersion:'2026-04-01', line:'dielectrico:not_core', retrievalRunId:'r_cv005_1', score:0.85, title:'Catálogo interno'}
+      ], patternBadge:{kind:'none'} },
+    { id:'msg_042', conversationId:'cv_005', role:'user',  content:'Sí, Tecmater TopSafe. Precio y plazo Perú.', timestamp:'2026-04-17T14:50:00-06:00' },
+    { id:'msg_043', conversationId:'cv_005', role:'agent', content:'Tecmater TopSafe EH, 80 pares:\n- USD 85/par [E1]\n- Total: USD 6,800 + IGV 18% = USD 8,024 [E2]\n- Plazo: 10d (7 BR→PE + 3 despacho) [E3]\n\nCertificación EH vigente hasta 2027-03 [E4].', timestamp:'2026-04-17T14:55:00-06:00',
+      evidenceSpans:[
+        {id:'e1',source:'price_table_intl',    sourceVersion:'2026-04-01', line:'tecmater_topsafe:85usd',      retrievalRunId:'r_cv005_2', score:1.00, title:'Precio USD'},
+        {id:'e2',source:'policy_playbook_pe',  sourceVersion:'1.0.0',       line:'PE IGV 18%',                    retrievalRunId:'r_cv005_2', score:1.00, title:'IGV PE'},
+        {id:'e3',source:'supplier_schedule',   sourceVersion:'2026-04-17',  line:'tecmater_pe:10d',               retrievalRunId:'r_cv005_2', score:0.92, title:'Plazo PE'},
+        {id:'e4',source:'cert_registry',       sourceVersion:'2026-04-01',  line:'topsafe_eh:valid_2027-03',     retrievalRunId:'r_cv005_2', score:1.00, title:'Certificación EH'}
+      ], patternBadge:{kind:'learned',count:1} },
+    { id:'msg_044', conversationId:'cv_005', role:'user',  content:'Cotización enviada. Gracias.', timestamp:'2026-04-17T15:10:00-06:00' },
+    { id:'msg_045', conversationId:'cv_005', role:'agent', content:'Conversación cerrada. Marcada para consolidación: "sourcing EH/dieléctrico → Tecmater TopSafe default".', timestamp:'2026-04-17T15:10:30-06:00', patternBadge:{kind:'none'} },
+
+    // cv_006 — triage
+    { id:'msg_050', conversationId:'cv_006', role:'user',  content:'Ticket 4412: cliente reporta calzado con planta despegada tras 30 días de uso.', timestamp:'2026-04-18T14:00:00-06:00' },
+    { id:'msg_051', conversationId:'cv_006', role:'agent', content:'Clasificación: <strong>Defecto fabricación</strong> (L2, requiere inspección técnica) [E1]. Cliente ACME MX, compra 2026-03-15, Velox 350 t43. Garantía hasta 2026-09-15 [E2].\n\nRuteo auto: equipo L2 notificado. Inspección 2026-04-19 09:00.', timestamp:'2026-04-18T14:02:00-06:00', draftIds:['dr_006'],
+      evidenceSpans:[
+        {id:'e1',source:'triage_playbook', sourceVersion:'2.1.0',       line:'planta_despegada<90d:L2_defect', retrievalRunId:'r_cv006_1', score:1.00, title:'Playbook triage'},
+        {id:'e2',source:'sales_log',        sourceVersion:'2026-03-15', line:'acme_mx:velox350_t43',            retrievalRunId:'r_cv006_1', score:1.00, title:'Compra registrada'}
+      ], patternBadge:{kind:'gold',rating:10} },
+    { id:'msg_052', conversationId:'cv_006', role:'user',  content:'Envía comunicación al cliente confirmando inspección.', timestamp:'2026-04-18T14:10:00-06:00' },
+    { id:'msg_053', conversationId:'cv_006', role:'agent', content:'Mensaje enviado (L4 auto-send, triage estándar).\n\n"Hola Raúl, recibimos tu reporte sobre el Velox 350 t43. Un técnico pasará a revisar el 2026-04-19 a las 09:00. Te confirmamos por email. Gracias. — ACME MX"', timestamp:'2026-04-18T14:10:30-06:00', patternBadge:{kind:'gold',rating:10} },
+    { id:'msg_054', conversationId:'cv_006', role:'user',  content:'Perfecto', timestamp:'2026-04-18T14:25:00-06:00' },
+
+    // cv_007 — compliance
+    { id:'msg_060', conversationId:'cv_007', role:'user',  content:'¿La cotización dr_042 cumple POL_MX_001? Verificar antes de aprobar.', timestamp:'2026-04-19T11:00:00-06:00' },
+    { id:'msg_061', conversationId:'cv_007', role:'agent', content:'POL_MX_001 es "Cumplimiento fiscal y norma técnica MX" [E1]. Los 4 checkpoints:\n\n1. ✓ IVA 16% correcto\n2. ✓ ISR aplicado (monto > 50k)\n3. ✓ ASTM F2413 citada\n4. ⚠ Factura no generada todavía (post-approval)\n\n3/4 pasan; el 4to es esperable pre-approval. Compliant para aprobar.', timestamp:'2026-04-19T11:02:00-06:00',
+      evidenceSpans:[
+        {id:'e1',source:'policy_registry', sourceVersion:'2026-04-01', line:'POL_MX_001:v2.1', retrievalRunId:'r_cv007_1', score:1.00, title:'POL_MX_001'}
+      ], patternBadge:{kind:'gold',rating:10} },
+    { id:'msg_062', conversationId:'cv_007', role:'user',  content:'Algún riesgo adicional?', timestamp:'2026-04-19T11:08:00-06:00' },
+    { id:'msg_063', conversationId:'cv_007', role:'agent', content:'Riesgo: el plazo prometido era 7d pero data histórica Marluvas muestra p90=11d. Recomendé ajustar a 9-10d en cv_001. Si el draft aún dice 7d, es riesgo comercial. Verificá antes de aprobar.', timestamp:'2026-04-19T11:12:00-06:00', patternBadge:{kind:'learned',count:2} },
+
+    // cv_008 — archived summary
+    { id:'msg_070', conversationId:'cv_008', role:'user',  content:'Resumen pipeline Colombia Q1', timestamp:'2026-03-15T10:00:00-06:00' },
+    { id:'msg_071', conversationId:'cv_008', role:'agent', content:'Pipeline CO Q1 2026:\n- Cotizaciones: 42\n- Ganadas: 18 (43%)\n- Perdidas: 12 (29%)\n- Pendientes: 12 (29%)\n- Revenue: COP 540M\n- Top: Construcciones Bogotá (COP 180M)', timestamp:'2026-03-15T10:15:00-06:00', patternBadge:{kind:'gold',rating:8} },
+    { id:'msg_072', conversationId:'cv_008', role:'user',  content:'Guardado', timestamp:'2026-03-15T10:20:00-06:00' }
+  ],
+
+  /* ─── 20. availableAgents (derivation for chat panel) ─── */
+  availableAgents: [
+    { id:'ag_cotizador', name:'Cotizador MX/LATAM',   autonomy:'L1', runsLast7d:18, sparklineData:[2,3,4,2,3,2,2], status:'active', triggerWord:'/cotizar' },
+    { id:'ag_pipeline',  name:'Sourcing CO/PE',        autonomy:'L0', runsLast7d:5,  sparklineData:[0,1,1,1,1,0,1], status:'active', triggerWord:'/pipeline' },
+    { id:'ag_triage',    name:'Customer Support',      autonomy:'L2', runsLast7d:22, sparklineData:[3,4,3,4,3,3,2], status:'active', triggerWord:'(auto)' },
+    { id:'ag_bant',      name:'BANT + Consolidator',   autonomy:'L1', runsLast7d:14, sparklineData:[2,2,3,2,2,1,2], status:'active', triggerWord:'/bant' },
+    { id:'ag_summarizer',name:'Summarizer Interno',    autonomy:'L3', runsLast7d:28, sparklineData:[4,5,4,4,4,3,4], status:'active', triggerWord:'(interno)' },
+    { id:'ag_saludo',    name:'Hola Cliente',           autonomy:'L2', runsLast7d:9,  sparklineData:[1,2,1,2,1,1,1], status:'active', triggerWord:'/hola' }
+  ],
+
+  /* ─── 21. availableSkillsForChat (12) ─── */
+  availableSkillsForChat: [
+    { id:'sk_cotizar',        name:'Cotizar',          icon:'💼', learningHeat:'hot',  description:'Genera cotizaciones B2B con evidencia + retención',     requiredRole:'operator' },
+    { id:'sk_sourcing',       name:'Sourcing',         icon:'🔍', learningHeat:'warm', description:'Busca stock y alternativas multi-supplier',              requiredRole:'operator' },
+    { id:'sk_email_draft',    name:'Email draft',      icon:'✉',  learningHeat:'cold', description:'Redacta emails comerciales con tono apropiado',          requiredRole:'operator' },
+    { id:'sk_consolidate',    name:'Consolidate',      icon:'◈',  learningHeat:'gold', description:'Analiza feedbacks y propone consolidación de patrones',  requiredRole:'admin'    },
+    { id:'sk_compliance',     name:'Compliance check', icon:'⚖',  learningHeat:'cold', description:'Verifica cumplimiento de políticas org en drafts',       requiredRole:'operator' },
+    { id:'sk_stock_lookup',   name:'Stock lookup',     icon:'📦', learningHeat:'warm', description:'Consulta inventario actual multi-bodega',                requiredRole:'operator' },
+    { id:'sk_specs_tecnicas', name:'Specs técnicas',   icon:'📋', learningHeat:'cold', description:'Busca y cita fichas técnicas ASTM/EN/NTC',               requiredRole:'operator' },
+    { id:'sk_summarize',      name:'Summarize',        icon:'📝', learningHeat:'gold', description:'Resume pipelines, calls y documentos largos',            requiredRole:'operator' },
+    { id:'sk_bant',           name:'BANT qualify',     icon:'🎯', learningHeat:'warm', description:'Clasifica leads con Budget/Authority/Need/Timeline',     requiredRole:'operator' },
+    { id:'sk_triage',         name:'Triage',           icon:'🚑', learningHeat:'gold', description:'Ruteo automático de tickets L1/L2/L3',                    requiredRole:'operator' },
+    { id:'sk_followup',       name:'Follow-up',        icon:'📅', learningHeat:'cold', description:'Genera follow-ups con contexto de interacción previa',   requiredRole:'operator' },
+    { id:'sk_voc_analyze',    name:'Voice of customer',icon:'🎤', learningHeat:'warm', description:'Analiza calls y quotes del cliente',                       requiredRole:'admin'    }
+  ],
+
+  /* ─── 22. knowledgeHeatSamples (6 grounded-in samples per query pattern) ─── */
+  knowledgeHeatSamples: [
+    { queryPattern:'cotización MX con ISR', sources:[
+      { sourceId:'POL_MX_001',   title:'Política fiscal MX',              version:'v2.1',             lineRange:'§B3.1',       score:0.98 },
+      { sourceId:'ENT_PROD_MAN', title:'Catálogo Marluvas · línea seg',  version:'1.3',              lineRange:'§B1',         score:0.92 },
+      { sourceId:'price_table',  title:'Lista precios 2026 Q1',           version:'2026-04-01',       lineRange:'GXT-42:2120', score:1.00 },
+      { sourceId:'stock_lookup', title:'Stock real Marluvas',             version:'2026-04-19T08:00Z',lineRange:'GXT-42:520',  score:0.95 }
+    ]},
+    { queryPattern:'sourcing dieléctrico PE', sources:[
+      { sourceId:'supplier_catalog',    title:'Catálogo supplier externos', version:'2026-03',      lineRange:'§EH-PE',            score:0.87 },
+      { sourceId:'cert_registry',       title:'Certificaciones EH vigentes',version:'2026-04-01',   lineRange:'tecmater_topsafe',  score:1.00 },
+      { sourceId:'policy_playbook_pe',  title:'Política PE',                 version:'1.0',         lineRange:'§igv',               score:0.94 }
+    ]},
+    { queryPattern:'triage defecto fabricación', sources:[
+      { sourceId:'triage_playbook', title:'Playbook triage',            version:'2.1', lineRange:'§defecto', score:1.00 },
+      { sourceId:'sales_log',        title:'Log de ventas (garantías)',   version:'live', lineRange:'acme_mx', score:1.00 }
+    ]},
+    { queryPattern:'consolidación feedback sk_cotizar', sources:[
+      { sourceId:'feedback_db',      title:'Feedback DB',       version:'live',        lineRange:'last_7d',     score:1.00 },
+      { sourceId:'pattern_detector', title:'Pattern Detector',  version:'2026-04-17',  lineRange:'sk_cotizar',  score:0.91 }
+    ]},
+    { queryPattern:'compliance POL_MX_001', sources:[
+      { sourceId:'policy_registry', title:'Registry de políticas', version:'2026-04-01', lineRange:'POL_MX_001', score:1.00 }
+    ]},
+    { queryPattern:'sourcing CO stock', sources:[
+      { sourceId:'stock_lookup_co',     title:'Stock CO (Bogotá + tránsito)', version:'live',       lineRange:'tecmater_velox_bog',  score:1.00 },
+      { sourceId:'price_table_co',      title:'Lista precios CO',              version:'2026-04-01', lineRange:'tecmater_velox_co',    score:1.00 },
+      { sourceId:'policy_playbook_co',  title:'Política CO',                    version:'1.1',       lineRange:'§iva,§volumen',         score:0.96 }
+    ]}
+  ],
+
+  /* ─── 23. voiceOfCustomerSamples (4 quotes) ─── */
+  voiceOfCustomerSamples: [
+    { id:'voc_1', quote:'Nos ayudaría mucho que el plazo no cambiara entre cotización y entrega.',                              sentiment:'neutral',  sourceCustomer:'ACME Industrias MX',    sourceCallId:'call_0412_a', date:'2026-04-12' },
+    { id:'voc_2', quote:'El precio vs. calidad de Marluvas es imbatible, pero necesitamos que el stock sea más confiable.',      sentiment:'positive', sourceCustomer:'Construcciones Bogotá', sourceCallId:'call_0410_b', date:'2026-04-10' },
+    { id:'voc_3', quote:'Que la factura salga con el NIT correcto, la última tuvimos que rehacerla.',                           sentiment:'negative', sourceCustomer:'Minera MX',             sourceCallId:'call_0408_c', date:'2026-04-08' },
+    { id:'voc_4', quote:'Muy bien la respuesta rápida del agente, resolvió el ticket en 5 minutos.',                            sentiment:'positive', sourceCustomer:'ACME Industrias MX',    sourceCallId:'call_0418_d', date:'2026-04-18' }
+  ],
+
+  /* ═══════════════════════════════════════════════════════════════
+     [V3-PATCH 2026-04-19] · Bandeja polymorphism (C14 + B1 gap #1)
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* ─── 24. inboxItems (11 kinds beyond drafts; drafts stay in collection 7) ─── */
+  inboxItems: [
+    // 2 · inbound_email (Postmark inbound)
+    { id:'in_e_001', kind:'inbound_email', tenantId:'t_muito', from:{ name:'Raúl Méndez',       email:'raul.mendez@acme.com.mx' },        subject:'RFQ urgente · 200 pares Velox 350',           preview:'Hola, necesitamos urgente cotización por 200 pares de Marluvas Velox 350 talla 41-43. Cliente: ACME planta Toluca…', receivedAt:'2026-04-19T11:42:00-06:00', state:'untriaged', priority:'high',   businessEntityId:'be_acme_mx',     attachmentCount:1, suggestedAgent:'ag_cotizador' },
+    { id:'in_e_002', kind:'inbound_email', tenantId:'t_muito', from:{ name:'Sofía Bello',        email:'sofia@construcciones.co' },        subject:'Re: Cotización dr_cv004_1 — duda sobre IVA',  preview:'Buenas, tengo una duda sobre el IVA aplicado en la cotización que enviaste ayer. ¿Es 19% o 16%?…',                  receivedAt:'2026-04-19T10:18:00-06:00', state:'assigned',  priority:'normal', businessEntityId:'be_constru_co',  assignedAgentId:'ag_cotizador',     attachmentCount:0 },
+    { id:'in_e_003', kind:'inbound_email', tenantId:'t_muito', from:{ name:'Patricia Silva',     email:'p.silva@brmin.com.br' },           subject:'Confirmación entrega lote BR-3421',           preview:'Confirmamos recepción de los 14 pares Velox enviados ayer. Todo conforme. Adjunto remito firmado…',                receivedAt:'2026-04-18T16:04:00-06:00', state:'completed', priority:'normal', businessEntityId:'be_marluvas',   attachmentCount:1 },
+
+    // 3 · inbound_msg (WhatsApp / chat platforms — BSP planificado, mockeado)
+    { id:'in_w_001', kind:'inbound_msg',   tenantId:'t_muito', from:{ name:'C. Ortega',          email:null, channel:'whatsapp', phone:'+52 55 1234 5678' }, subject:'WhatsApp · status pedido', preview:'Buen día, alguna actualización sobre el pedido de 120 pares Velox?', receivedAt:'2026-04-19T09:33:00-06:00', state:'untriaged', priority:'normal', businessEntityId:null, suggestedAgent:'ag_triage' },
+
+    // 4 · crm_event
+    { id:'in_c_001', kind:'crm_event',     tenantId:'t_muito', from:{ name:'CRM',                email:'system@crm.local',  channel:'crm' },             subject:'Lead avanzó a Quote · Constructora Andina (PE)', preview:'El lead "Constructora Andina" pasó de Discovery → Quote. Owner: Bruno. Próxima acción: enviar cotización.', receivedAt:'2026-04-19T11:00:00-06:00', state:'untriaged', priority:'normal', metadata:{ stageBefore:'discovery', stageAfter:'quote', leadId:'L-9821' } },
+    { id:'in_c_002', kind:'crm_event',     tenantId:'t_muito', from:{ name:'CRM',                email:'system@crm.local',  channel:'crm' },             subject:'Deal cerrado ganado · Marluvas LATAM',          preview:'Deal "Marluvas Q2 EH" cerrado ganado. Monto: USD 84,000. Comisión generada para Bruno.', receivedAt:'2026-04-18T15:20:00-06:00', state:'acknowledged', priority:'low', metadata:{ dealId:'D-4471', amountUSD:84000 } },
+
+    // 5 · alert (system / monitoring)
+    { id:'in_al_001', kind:'alert',        tenantId:'t_muito', from:{ name:'Sistema',            email:'system@faberloom', channel:'system' },           subject:'Stock bajo · Velox 350 talla 42 (V350-M:8u)',   preview:'El stock cayó por debajo del umbral de seguridad (10u). Considerar reorden o pausar cotizaciones que prometan plazos cortos.', receivedAt:'2026-04-19T08:30:00-06:00', state:'untriaged', priority:'high',   metadata:{ skuKey:'V350-M', currentQty:8, threshold:10 } },
+    { id:'in_al_002', kind:'alert',        tenantId:'t_muito', from:{ name:'Sistema',            email:'system@faberloom', channel:'system' },           subject:'Consolidation candidate hot · sk_cotizar',       preview:'El termómetro de sk_cotizar marca 6 patrones acumulados. Listo para revisión en Skill Studio.', receivedAt:'2026-04-18T16:00:00-06:00', state:'acknowledged', priority:'normal', metadata:{ skillId:'sk_cotizar', patternCount:6 } },
+
+    // 6 · approval_request (de otro user)
+    { id:'in_ap_001', kind:'approval_request', tenantId:'t_muito', from:{ name:'Bruno', email:'bruno@muito.work', userId:'u_bruno', channel:'internal' }, subject:'Aprobación requerida · Cotización 600k MXN > umbral', preview:'Cotización supera 500k MXN, requiere aprobación de Admin antes de enviar. Draft dr_010 escalado.', receivedAt:'2026-04-18T17:08:00-06:00', state:'pending_my_approval', priority:'high', assignedTo:'u_ana', metadata:{ parentDraftId:'dr_010', amountMXN:614200 } },
+
+    // 7 · escalation (de un agente)
+    { id:'in_es_001', kind:'escalation',   tenantId:'t_muito', from:{ name:'ag_cotizador',      email:null, channel:'agent', agentId:'ag_cotizador' },  subject:'Escalación · cliente fuera de scope geográfico (Argentina)', preview:'Recibí RFQ de cliente en Argentina; mi scope es MX/CO/PE/BR. Necesito decisión de Owner: ¿amplío scope o derivo a partner local?', receivedAt:'2026-04-19T10:55:00-06:00', state:'untriaged', priority:'normal', metadata:{ originAgentId:'ag_cotizador', escalationReason:'out_of_scope' } },
+
+    // 8 · feedback_reply (alguien respondió a un feedback)
+    { id:'in_fb_001', kind:'feedback_reply', tenantId:'t_muito', from:{ name:'Ana', email:'ana@muito.work', userId:'u_ana', channel:'internal' }, subject:'Re: feedback fb_3 · tono Bogotá',                preview:'Apliqué el patrón de tono más informal para Bogotá en el manual overlay de sk_cotizar. Cerrá el loop.', receivedAt:'2026-04-19T08:40:00-06:00', state:'untriaged', priority:'low', metadata:{ originalFeedbackId:'fb_3', resolvedBy:'u_ana' } },
+
+    // 9 · sla_timer (recordatorio de expiración)
+    { id:'in_sla_001', kind:'sla_timer',   tenantId:'t_muito', from:{ name:'Sistema',            email:'system@faberloom', channel:'system' },           subject:'Draft dr_001 expira en 4h',                       preview:'El draft dr_001 fue creado hace 68h. Expira a las 72h por política draft-first. Aprobar o rechazar antes.', receivedAt:'2026-04-19T11:12:00-06:00', state:'untriaged', priority:'high', dueAt:'2026-04-19T15:12:00-06:00', metadata:{ draftId:'dr_001', hoursLeft:4 } },
+
+    // 10 · webhook (evento externo)
+    { id:'in_wh_001', kind:'webhook',      tenantId:'t_muito', from:{ name:'SAP',                email:'erp@sap.local',     channel:'webhook' },           subject:'Webhook · orden SAP-44192 confirmada',           preview:'SAP confirmó la orden 44192 derivada de la cotización dr_005. Stock reservado, ETA 2026-04-22.', receivedAt:'2026-04-18T17:30:00-06:00', state:'acknowledged', priority:'normal', metadata:{ sapOrderId:'SAP-44192', sourceDraftId:'dr_005' } },
+
+    // 11 · audit_alert (admin only)
+    { id:'in_au_001', kind:'audit_alert',  tenantId:'t_muito', from:{ name:'Audit Worker',       email:'audit@faberloom',  channel:'system' },           subject:'⚠ Break-glass activado por u_alvaro',             preview:'Tenant Owner activó break-glass para investigar reporte de usuario. Sesión válida hasta 19:00. Audit log activado.', receivedAt:'2026-04-19T11:00:00-06:00', state:'untriaged', priority:'high', visibleToRoles:['admin','owner'], metadata:{ actor:'u_alvaro', durationHours:8, expiresAt:'2026-04-19T19:00:00-06:00' } },
+
+    // 12 · task (asignada por otro user / agente)
+    { id:'in_t_001', kind:'task',          tenantId:'t_muito', from:{ name:'Álvaro', email:'sjoalfaro@gmail.com', userId:'u_alvaro', channel:'internal' }, subject:'Revisar POL_MX_001 v2.2 antes del viernes',     preview:'La política POL_MX_001 fue actualizada. Revisar y aprobar la nueva versión antes del 2026-04-22.', receivedAt:'2026-04-18T09:00:00-06:00', state:'pending', priority:'normal', dueAt:'2026-04-22T18:00:00-06:00', assignedTo:'u_ana', metadata:{ targetDoc:'POL_MX_001', currentVersion:'v2.1', proposedVersion:'v2.2' } },
+    { id:'in_t_002', kind:'task',          tenantId:'t_muito', from:{ name:'ag_summarizer', email:null, userId:null, channel:'agent', agentId:'ag_summarizer' }, subject:'Validar resumen daily #124 antes de distribuir', preview:'Resumen daily generado, revisar y aprobar antes de enviar a la lista interna.', receivedAt:'2026-04-19T08:00:00-06:00', state:'pending', priority:'low', assignedTo:'u_alvaro', metadata:{ summaryId:'sum_124' } }
+  ],
+
+  /* ─── 25. comments (per draft / item, for approval chains discussion) ─── */
+  comments: [
+    { id:'cm_001', parentItemId:'dr_010', authorUserId:'u_ana',    body:'¿Confirmaste que el cliente acepta plazo de 14 días? Lo veo arriesgado.',  createdAt:'2026-04-18T17:11:00-06:00' },
+    { id:'cm_002', parentItemId:'dr_010', authorUserId:'u_alvaro', body:'Sí, hablé con ellos hoy. Confirman 14 días. Aprobar.',                      createdAt:'2026-04-18T17:18:00-06:00' },
+    { id:'cm_003', parentItemId:'dr_001', authorUserId:'u_ana',    body:'Bruno: el plazo de 7 días que prometiste a ACME es riesgoso (Marluvas p90 = 11d). Ajustá antes de aprobar.', createdAt:'2026-04-19T09:45:00-06:00' },
+    { id:'cm_004', parentItemId:'dr_001', authorUserId:'u_bruno',  body:'Ya lo corregí, ajusté a 9-10 días con cláusula. Re-revisar.',               createdAt:'2026-04-19T10:08:00-06:00' }
+  ],
+
+  /* ─── 26. actionBundles (multi-output: 1 approval → N actions atomically) ─── */
+  actionBundles: [
+    {
+      id:'bundle_dr_001',
+      draftId:'dr_001',
+      actions:[
+        { actionId:'send_email_quote',  description:'Enviar cotización por correo a ACME MX',         target:'raul.mendez@acme.com.mx' },
+        { actionId:'attach_pdf',        description:'Adjuntar PDF auto-generado de la cotización',     target:'cotizacion_dr_001.pdf' },
+        { actionId:'update_crm_stage',  description:'Marcar oportunidad ACME-Q2 como "Quote sent"',    target:'opp_acme_q2' },
+        { actionId:'reserve_stock',     description:'Reservar 14 V350 + 8 GXT por 72h en MRP',         target:'V350×14, GXT×8' },
+        { actionId:'schedule_followup', description:'Agendar follow-up al día 5 si no hay respuesta',   target:'2026-04-24T09:00' }
+      ],
+      aggregateRisk:{ reversibility:'reversible_24h', side_effects:['external_send','crm_log','inventory_hold','calendar_write'] }
+    },
+    {
+      id:'bundle_dr_010',
+      draftId:'dr_010',
+      actions:[
+        { actionId:'create_order_sap',  description:'Crear orden de compra en SAP',                    target:'SAP-AUTO' },
+        { actionId:'send_email_quote',  description:'Confirmación a BR Mining',                        target:'p.silva@brmin.com.br' },
+        { actionId:'update_crm_stage',  description:'Marcar deal cerrado ganado',                       target:'deal_brmin_q1' }
+      ],
+      aggregateRisk:{ reversibility:'irreversible_cost', side_effects:['erp_write','external_send','crm_commit'] }
+    }
+  ],
+
+  /* ─── 27. approvalChains (multi-actor approval flow) ─── */
+  approvalChains: [
+    { id:'chain_001', draftId:'dr_010', steps:[
+      { stepIdx:1, requiredRole:'operator', requiredUserId:'u_bruno', state:'approved',          approvedAt:'2026-04-18T17:05:00-06:00' },
+      { stepIdx:2, requiredRole:'admin',    requiredUserId:'u_ana',   state:'pending',           dueAt:'2026-04-19T17:00:00-06:00' },
+      { stepIdx:3, requiredRole:'owner',    requiredUserId:'u_alvaro',state:'waiting_previous' }
+    ], reason:'Monto > 500k MXN requiere admin + owner approval' }
+  ],
+
+  /* ─── 28. attachments (per item: inbound, auto-generated, user-upload) ─── */
+  attachments: [
+    { id:'att_001', parentItemId:'in_e_001', kind:'inbound',       filename:'RFQ-ACME-Toluca-200V350.pdf', sizeKB:124,  mimeType:'application/pdf' },
+    { id:'att_002', parentItemId:'in_e_003', kind:'inbound',       filename:'remito-firmado-BR3421.pdf',   sizeKB:98,   mimeType:'application/pdf' },
+    { id:'att_003', parentItemId:'dr_001',   kind:'auto_generated',filename:'cotizacion_dr_001.pdf',        sizeKB:84,   mimeType:'application/pdf', generatedAt:'2026-04-19T09:11:32-06:00' },
+    { id:'att_004', parentItemId:'dr_001',   kind:'user_upload',   filename:'fichaTecnica_VeloxXT.pdf',     sizeKB:412,  mimeType:'application/pdf', uploadedBy:'u_alvaro', uploadedAt:'2026-04-19T09:14:00-06:00' }
+  ],
+
+  /* ─── 29. handoffPackets (P10 structured handoff between agents) ─── */
+  handoffPackets: [
+    {
+      id:'ho_001',
+      fromAgentId:'ag_cotizador',
+      toAgentId:'ag_compliance',
+      task:'Verificar que la cotización dr_001 cumple POL_MX_001',
+      goal:'Confirmar fiscal + norma técnica + retención antes de aprobación',
+      context:'Cotización 14 Velox + 8 Goliath para ACME MX. Monto MXN 1.13M. Cliente recurrente.',
+      constraints:['Plazo respuesta <24h', 'No exponer datos de otros clientes ACME group'],
+      artifacts:['dr_001', 'POL_MX_001 v2.1'],
+      deadline:'2026-04-19T13:00:00-06:00',
+      confidence:0.92,
+      requestedOutputFormat:'compliance_check_report',
+      createdAt:'2026-04-19T11:05:00-06:00',
+      state:'pending'
+    }
+  ],
+
+  /* ═══════════════════════════════════════════════════════════════
+     [V3.5-PATCH 2026-04-19] · Agent lifecycle (C17 + B1 gap #5 cierre)
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* ─── 30. agentSpecVersions (lineage history per agent) ─── */
+  agentSpecVersions: [
+    { id:'asv_001', agentId:'ag_cotizador', specVersion:'1.0.0', publishedAt:'2026-01-15T10:00:00-06:00', publishedBy:'u_alvaro', supersedes:null, changeNote:'Initial spec creation' },
+    { id:'asv_002', agentId:'ag_cotizador', specVersion:'1.0.1', publishedAt:'2026-02-08T14:30:00-06:00', publishedBy:'u_alvaro', supersedes:'1.0.0', changeNote:'Added MX retención ISR rule to escalation_policy' },
+    { id:'asv_003', agentId:'ag_cotizador', specVersion:'1.0.2', publishedAt:'2026-03-15T09:00:00-06:00', publishedBy:'u_ana',    supersedes:'1.0.1', changeNote:'autonomy_ceiling raised L1 → L2 after evidence threshold' },
+    { id:'asv_004', agentId:'ag_cotizador', specVersion:'1.0.3', publishedAt:'2026-04-10T11:00:00-06:00', publishedBy:'u_alvaro', supersedes:'1.0.2', changeNote:'Marluvas priority skill binding + sk_specs_tecnicas added' },
+    { id:'asv_005', agentId:'ag_bant',      specVersion:'1.2.1', publishedAt:'2026-03-20T08:00:00-06:00', publishedBy:'u_ana',    supersedes:'1.2.0', changeNote:'BANT thresholds tightened' },
+    { id:'asv_006', agentId:'ag_triage',    specVersion:'2.0.0', publishedAt:'2026-04-01T07:00:00-06:00', publishedBy:'u_alvaro', supersedes:'1.5.4', changeNote:'Major: autonomy_ceiling raised to L4 + new state_machine' }
+  ],
+
+  /* ═══════════════════════════════════════════════════════════════
+     [V4-PATCH 2026-04-22] · LLM Orchestration F1 + governance + F2 roadmap
+     Fuentes canónicas: ENT_PLAT_LLM_ROUTING v2.0 · DEC-006/007/008 · Q1-Q18
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* ─── 31. llmTiers (YAML source-of-truth read-only) ─── */
+  llmTiers: [
+    { key:'simple',     primary:'gemini_flash',         fallback:['gpt_4o_mini','kimi_k2'],    maxCostUsd:0.01, description:'Clasificación, extracción, rewrite mínimo. Baja cognición, alta frecuencia.' },
+    { key:'medium',     primary:'kimi_k2',              fallback:['deepseek_v3','gpt_4o_mini'], maxCostUsd:0.05, description:'Drafts B2B, resúmenes, research synthesis simple, QualifyBot.' },
+    { key:'complex',    primary:'sonnet_4_6',           fallback:['opus_4_6'],                  maxCostUsd:0.50, description:'Reducer / Critic / Synthesizer de swarms. Decisiones estratégicas. Code review.' },
+    { key:'local_only', primary:'ollama_llama_3_2_3b',  fallback:[],                            maxCostUsd:0.00, description:'CEO-ONLY data que jamás debe salir del tenant. Sin fallback externo.' }
+  ],
+  llmTiersYamlUrl: 'https://github.com/sjoalfaro/mwt-knowledge-hub/blob/main/faberloom/config/llm_tiers.yaml',
+  llmTiersYamlVersion: '1.0',
+  llmTiersLastCommit: { sha:'a3c7f9e', author:'u_alvaro', date:'2026-04-21T18:14:00-06:00', msg:'chore(tiers): canonize F1 tiered routing post DEC-006' },
+
+  /* ─── 32. modelAllowlist · Data Residency (per tenant × classification) ─── */
+  modelAllowlist: [
+    { id:'mal_1', tenantId:'t_muito', dataClassification:'PUBLIC',       allowedProviders:['anthropic','openai','google','moonshot','deepseek','ollama'], blockedRegions:[],     reasonDenied:'—',                                      updatedAt:'2026-04-21T18:00:00-06:00', updatedBy:'u_alvaro', approvedBy:'u_alvaro' },
+    { id:'mal_2', tenantId:'t_muito', dataClassification:'INTERNAL',     allowedProviders:['anthropic','openai','google','moonshot','deepseek'],          blockedRegions:['cn'], reasonDenied:'LGPD BR · data no debe cruzar a CN',     updatedAt:'2026-04-21T18:00:00-06:00', updatedBy:'u_alvaro', approvedBy:'u_alvaro' },
+    { id:'mal_3', tenantId:'t_muito', dataClassification:'CONFIDENTIAL', allowedProviders:['anthropic','openai','google'],                                 blockedRegions:['cn','ru'], reasonDenied:'Datos sensibles de clientes · solo US/EU',   updatedAt:'2026-04-21T18:00:00-06:00', updatedBy:'u_alvaro', approvedBy:'u_alvaro' },
+    { id:'mal_4', tenantId:'t_muito', dataClassification:'CEO_ONLY',     allowedProviders:['anthropic','ollama'],                                          blockedRegions:['cn','ru'], reasonDenied:'CEO-ONLY · Anthropic + local Ollama only (Q7 pending)', updatedAt:'2026-04-21T18:00:00-06:00', updatedBy:'u_alvaro', approvedBy:'u_alvaro' }
+  ],
+  llmPlansDefaults: [
+    { plan:'Starter',    models:['gemini_flash','gpt_4o_mini','kimi_k2'] },
+    { plan:'Pro',        models:['gemini_flash','gpt_4o_mini','kimi_k2','sonnet_4_6'] },
+    { plan:'Enterprise', models:['gemini_flash','gpt_4o_mini','kimi_k2','sonnet_4_6','opus_4_6','ollama_llama_3_2_3b'] },
+    { plan:'CEO-ONLY',   models:['sonnet_4_6','opus_4_6','ollama_llama_3_2_3b'], note:'Solo US models. Bloquea kimi, deepseek, ollama-CN.' }
+  ],
+
+  /* ─── 33. circuitBreakers (Redis state · 2 niveles: provider + modelo) ─── */
+  circuitBreakers: {
+    thresholds: { openErrorRate:0.50, openWindow:20, halfOpenAfterSec:60, closeErrorRate:0.10, closeWindow:10, openLatencyP99Ms:15000, closeLatencyP99Ms:5000, rateLimit429Consecutive:3 },
+    providers: [
+      { id:'anthropic', state:'closed',    errorRate:0.02, p99Ms:2400, redisKey:'cb:provider:anthropic',  lastOpenedAt:null },
+      { id:'openai',    state:'closed',    errorRate:0.04, p99Ms:1800, redisKey:'cb:provider:openai',     lastOpenedAt:null },
+      { id:'google',    state:'closed',    errorRate:0.01, p99Ms:900,  redisKey:'cb:provider:google',     lastOpenedAt:null },
+      { id:'moonshot',  state:'half_open', errorRate:0.12, p99Ms:3200, redisKey:'cb:provider:moonshot',   lastOpenedAt:'2026-04-22T08:14:00-06:00' },
+      { id:'deepseek',  state:'closed',    errorRate:0.03, p99Ms:1100, redisKey:'cb:provider:deepseek',   lastOpenedAt:null },
+      { id:'ollama',    state:'closed',    errorRate:0.00, p99Ms:450,  redisKey:'cb:provider:ollama',     lastOpenedAt:null },
+      { id:'groq',      state:'open',      errorRate:0.68, p99Ms:8200, redisKey:'cb:provider:groq',       lastOpenedAt:'2026-04-22T09:02:00-06:00', reopenAt:'2026-04-22T09:03:00-06:00' }
+    ],
+    models: [
+      { id:'sonnet_4_6',          provider:'anthropic', state:'closed',    errorRate:0.03, p99Ms:2100, redisKey:'cb:model:anthropic:sonnet_4_6' },
+      { id:'opus_4_6',            provider:'anthropic', state:'closed',    errorRate:0.01, p99Ms:3400, redisKey:'cb:model:anthropic:opus_4_6' },
+      { id:'gpt_4o_mini',         provider:'openai',    state:'closed',    errorRate:0.05, p99Ms:1400, redisKey:'cb:model:openai:gpt_4o_mini' },
+      { id:'gemini_flash',        provider:'google',    state:'closed',    errorRate:0.01, p99Ms:780,  redisKey:'cb:model:google:gemini_flash' },
+      { id:'kimi_k2',             provider:'moonshot',  state:'half_open', errorRate:0.18, p99Ms:3800, redisKey:'cb:model:moonshot:kimi_k2' },
+      { id:'deepseek_v3',         provider:'deepseek',  state:'closed',    errorRate:0.04, p99Ms:1200, redisKey:'cb:model:deepseek:v3' },
+      { id:'ollama_llama_3_2_3b', provider:'ollama',    state:'closed',    errorRate:0.00, p99Ms:520,  redisKey:'cb:model:ollama:llama_3_2_3b' }
+    ]
+  },
+
+  /* ─── 34. haLitellm (infra status 2 instancias + HAProxy) ─── */
+  haLitellm: {
+    primary: { id:'litellm-primary', endpoint:'litellm-primary:4000', status:'healthy', lastHealthCheck:'2026-04-22T09:14:22-06:00', uptimePct:99.94, latencyP50Ms:42 },
+    backup:  { id:'litellm-backup',  endpoint:'litellm-backup:4001',  status:'healthy', lastHealthCheck:'2026-04-22T09:14:22-06:00', uptimePct:99.88, latencyP50Ms:48 },
+    haproxy: { frontend:'haproxy:8080', healthCheckIntervalSec:10, lastCheck:'2026-04-22T09:14:22-06:00', status:'ok' },
+    failoverActive: false,
+    sharedFernetKeyMount:'/run/secrets/litellm_fernet',
+    observability: { langfuseUrl:'langfuse.faberloom.internal', prometheusExporter:'litellm_prom_exporter:9100' }
+  },
+
+  /* ─── 35. coldStart (per tenant · 30 days exploración manual) ─── */
+  coldStart: {
+    enabled: true,
+    startedAt: '2026-04-20T00:00:00-06:00',
+    daysTotal: 30,
+    daysElapsed: 2,
+    daysRemaining: 28,
+    ceoReviewCadence: 'daily ≥1 sample',
+    allowlistEditableBy: 'CEO',
+    postDayBehavior: 'admin del tenant gana edición sobre tenant_model_allowlist',
+    samplesReviewedToday: 3,
+    samplesReviewedTotal: 6
+  },
+
+  /* ─── 36. voiceProfile (6º Add-on · per tenant · reemplaza Arena) ─── */
+  voiceProfile: {
+    tenantId: 't_muito',
+    enabled: true,
+    tone: 'técnico',
+    toneOptions: ['formal','casual','neutral','técnico'],
+    primaryLanguage: 'es-LATAM',
+    languageOptions: ['es-LATAM','pt-BR','en-US','es-ES'],
+    blockedTerms: ['barato','súper barato','ganga','oferta loca'],
+    preferredTerms: [
+      { from:'producto', to:'solución' },
+      { from:'comprar', to:'adquirir' },
+      { from:'problema', to:'oportunidad de mejora' }
+    ],
+    defaultSignature: 'Saludos cordiales,\nEquipo Muito Work\nhttps://muito.work',
+    appliesTo: 'system_prompt_overlay_global',
+    sealedBehavior: 'se aplica como overlay · no modifica base sealed',
+    openBehavior: 'es parte del fork editable',
+    canonizedAt: '2026-04-21',
+    q1Status: 'pending_ceo_q1_per_tenant_f1_per_user_f2'
+  },
+
+  /* ─── 37. positionCatalog (org-role del agente · affects tono + escalamiento) ─── */
+  positionCatalog: [
+    { id:'exec_assistant',    title:'Executive Assistant',          influence:'tono formal · escalamiento directo a owner' },
+    { id:'sales_rep',          title:'Sales Rep',                    influence:'tono comercial · escalamiento a supervisor ventas' },
+    { id:'cs_tier1',           title:'Customer Support Tier 1',      influence:'tono empático · escalamiento a tier 2' },
+    { id:'cs_tier2',           title:'Customer Support Tier 2',      influence:'tono técnico · escalamiento a product/engineering' },
+    { id:'ops_coordinator',    title:'Operations Coordinator',       influence:'tono operativo · escalamiento a admin' },
+    { id:'compliance_officer', title:'Compliance Officer',           influence:'tono formal + jurídico · escalamiento a owner' },
+    { id:'marketing_copy',     title:'Marketing Copywriter',         influence:'tono creativo · sin escalamiento automático' },
+    { id:'procurement',        title:'Procurement Specialist',       influence:'tono técnico-comercial · escalamiento por monto' }
+  ],
+
+  /* ─── 38. authorityMatrix (L0-L4 × Authority Mode · hardcoded validas per SPEC_AGENT_COMPOSITION §6) ─── */
+  authorityMatrix: {
+    modes: [
+      { key:'SENALA',                 label:'SEÑALA',                 shortLabel:'Signal',       description:'Alerta · no genera draft.' },
+      { key:'PROPONE',                label:'PROPONE',                shortLabel:'Draft',        description:'Genera draft · humano aprueba siempre.' },
+      { key:'EJECUTA_CON_APROBACION', label:'EJEC · aprobación',       shortLabel:'Exec+approve', description:'Ejecuta solo tras humano OK.' },
+      { key:'EJECUTA_SOLO',           label:'EJEC · solo',             shortLabel:'Exec solo',    description:'Ejecuta sin gate · solo flujos probados.' }
+    ],
+    ladderAllowedAuthorities: {
+      L0: ['SENALA','PROPONE'],
+      L1: ['SENALA','PROPONE'],
+      L2: ['PROPONE','EJECUTA_CON_APROBACION','EJECUTA_SOLO'],
+      L3: ['PROPONE','EJECUTA_CON_APROBACION','EJECUTA_SOLO'],
+      L4: ['EJECUTA_SOLO']
+    },
+    sacredRule: 'Canales externos (email cliente, WhatsApp cliente, Slack cliente) SIEMPRE draft-first · regla hardcoded en motor · ni L4 cambia esto.'
+  },
+
+  /* ─── 39. sealedOpenMeta (flags por entity_type · drives UI badges + fork CTA) ─── */
+  sealedOpenFlags: {
+    skills: {
+      sk_cotizar:        { origin:'sealed', base_sealed_hash:'sha256:b2f9...12a4', forkedFrom:null, updateChannelEnabled:true  },
+      sk_specs_tecnicas: { origin:'sealed', base_sealed_hash:'sha256:e5c1...a8b3', forkedFrom:null, updateChannelEnabled:true  },
+      sk_stock_lookup:   { origin:'open',   base_sealed_hash:null,                   forkedFrom:'sk_cotizar',  updateChannelEnabled:false },
+      sk_specs_open:     { origin:'open',   base_sealed_hash:null,                   forkedFrom:null,          updateChannelEnabled:false }
+    },
+    agents: {
+      ag_cotizador:  { origin:'sealed', spec_sealed_hash:'sha256:h9x1...44ef', forkedFrom:null, updateChannelEnabled:true  },
+      ag_followup:   { origin:'open',   spec_sealed_hash:null,                  forkedFrom:null, updateChannelEnabled:false },
+      ag_triage:     { origin:'sealed', spec_sealed_hash:'sha256:f3a8...7bc9', forkedFrom:null, updateChannelEnabled:true  },
+      ag_bant:       { origin:'open',   spec_sealed_hash:null,                  forkedFrom:'ag_cotizador', updateChannelEnabled:false },
+      ag_summarizer: { origin:'sealed', spec_sealed_hash:'sha256:c1d2...88aa', forkedFrom:null, updateChannelEnabled:true  },
+      ag_pipeline:   { origin:'open',   spec_sealed_hash:null,                  forkedFrom:null, updateChannelEnabled:false },
+      ag_saludo:     { origin:'open',   spec_sealed_hash:null,                  forkedFrom:null, updateChannelEnabled:false }
+    }
+  },
+
+  /* ─── 40. openQuestionsQ1Q18 (LLM Orchestration · pending CEO) ─── */
+  openQuestionsQ1Q18: [
+    { id:'Q1',  priority:'P0', area:'voice_profile',       pending:'Voice profile per-tenant F1 o per-user F2',                                                       suggestedAnswer:'per-tenant F1 (solo owner edita), per-user F2',                                               unblocks:'SPEC_SKILL_COMPOSITION Add-on 6 · SPEC_AGENT_COMPOSITION §18' },
+    { id:'Q2',  priority:'P0', area:'infra',                pending:'Confirmar Hostinger KVM 8 specs (8 vCPU / 32 GB / 400 GB NVMe)',                                   suggestedAnswer:'SÍ',                                                                                           unblocks:'SPEC_ARCHITECTURE_BLUEPRINT infra section' },
+    { id:'Q3',  priority:'P0', area:'infra',                pending:'Confirmar región KVM (US / EU / otro) y si virgen',                                                 suggestedAnswer:'CEO define',                                                                                    unblocks:'tenant_model_allowlist data residency' },
+    { id:'Q4',  priority:'P1', area:'infra',                pending:'Single-node F1 o HA desde día 1',                                                                   suggestedAnswer:'Single-node F1 con LiteLLM HA interno (2 instancias same node)',                                unblocks:'SPEC_ARCHITECTURE §HA' },
+    { id:'Q5',  priority:'P1', area:'budget',               pending:'Budget operativo LLM diario por tenant (pago vs gratis)',                                           suggestedAnswer:'$20 pago / $5 gratis · daily caps + kill switch cost z>4',                                      unblocks:'SPEC_WORKFLOW_ENGINE anti-loop' },
+    { id:'Q6',  priority:'P0', area:'infra',                pending:'Cuentas Moonshot / DeepSeek / OpenAI ya existen (API keys)',                                         suggestedAnswer:'Verificar con CEO',                                                                             unblocks:'LiteLLM config inicial' },
+    { id:'Q7',  priority:'P0', area:'data_residency',        pending:'CEO-ONLY data · Anthropic+Ollama only o también Kimi/DeepSeek',                                    suggestedAnswer:'Anthropic + Ollama only (no CN por default)',                                                   unblocks:'Hard block en F.2 routing' },
+    { id:'Q8',  priority:'P2', area:'f2_adaptive',           pending:'Pesos score compuesto F2: global vs per-tenant',                                                   suggestedAnswer:'per-tenant (evita cross-tenant poisoning) · regresión logística',                               unblocks:'DEC-008 F2 · no urgente' },
+    { id:'Q9',  priority:'P2', area:'f2_adaptive',           pending:'Shadow testing F2: gold samples sintético vs producción real',                                     suggestedAnswer:'Sintético/redactado (Kimi A4 hard block)',                                                       unblocks:'DEC-008 F2' },
+    { id:'Q10', priority:'P2', area:'f2_adaptive',           pending:'Policy changes F2 · quién aprueba (4-eyes + firma digital SOC 2)',                                 suggestedAnswer:'CEO MWT platform-wide · owner+admin 4-eyes tenant-level',                                         unblocks:'DEC-008 F2' },
+    { id:'Q11', priority:'P0', area:'research_swarm',         pending:'Research Swarm F1 (sin critic) o F2',                                                              suggestedAnswer:'F1 sin critic · max_depth=2, budget=$0.50, timeout=15min, max_parallel=5',                      unblocks:'SPEC_FABERLOOM_RESEARCH_SWARM_v1' },
+    { id:'Q12', priority:'P0', area:'f1_routing',            pending:'Aceptar downgrade a tiered hardcoded F1 (DEC-006)',                                                 suggestedAnswer:'SÍ · Kimi LOW confidence justifica',                                                             unblocks:'Canoniza DEC-006 (ya en draft)' },
+    { id:'Q13', priority:'P1', area:'f2_gate',                pending:'Gate para promover a adaptive F2 (DEC-008)',                                                        suggestedAnswer:'3 tenants × 5K drafts/mes × 3 meses',                                                            unblocks:'Canoniza DEC-008 (ya en draft)' },
+    { id:'Q14', priority:'P1', area:'sprint_plan',           pending:'Swarm mechanism como primitiva S1 o capability S2',                                                suggestedAnswer:'S2 semana 3 (post-handoff pg-boss + Letta S1-2)',                                                 unblocks:'Sprint plan FaberLoom S2' },
+    { id:'Q15', priority:'P1', area:'minio',                 pending:'MinIO para swarm scratchpads F1',                                                                    suggestedAnswer:'SÍ · scratchpads TTL 7d · index en Postgres con pointer',                                         unblocks:'SPEC_WORKFLOW_ENGINE §Scratchpad' },
+    { id:'Q16', priority:'P1', area:'knowledge_broker',      pending:'Knowledge Broker F1 modes (CONSOLIDATE / BRIEF / ENRICH)',                                          suggestedAnswer:'CONSOLIDATE S2 · BRIEF S3 · ENRICH F2',                                                            unblocks:'SPEC_KNOWLEDGE_BROKER_v1' },
+    { id:'Q17', priority:'P2', area:'invocation',            pending:'@swarm! skip-planner shortcut (invocación directa)',                                                suggestedAnswer:'F2 · F1 siempre Plan-Confirm-Execute',                                                            unblocks:'SPEC_INVOCATION_REGISTRY §shortcuts' },
+    { id:'Q18', priority:'P1', area:'invocation',            pending:'Invocation handle · editable at creation, immutable after',                                         suggestedAnswer:'SÍ · naming @<skill-slug> o @<agent-slug> + auto-suffix si colisión',                             unblocks:'SPEC_INVOCATION_REGISTRY §naming' }
+  ],
+
+  /* ─── 41. f2Roadmap (muted cards · NO implementar UI · solo roadmap visible) ─── */
+  f2Roadmap: [
+    {
+      id:'F2.A', title:'Adaptive Routing — Auto-tuning based on real usage',
+      gateText:'Unlocks when: 3 tenants × 5,000 drafts/mes × 3 meses sostenido',
+      gateProgress:{ tenantsQualified:0, tenantsNeeded:3, progressPct:0 },
+      features:[
+        'per-tenant evidence ledger',
+        'weekly policy tuning',
+        'concept drift detection (Page-Hinkley / ADWIN)',
+        'MAB híbrido Thompson+ε-greedy',
+        'pesos aprendidos via logistic regression',
+        'N≥500 per comparison',
+        '4-eyes workflow + firma digital SOC 2',
+        'sintético shadow testing'
+      ],
+      refs:['ENT_PLAT_LLM_ROUTING §G','DEC-008','archivo/kimi_swarm_4_adaptive_routing.md']
+    },
+    {
+      id:'F2.B', title:'Arena Mode — Head-to-head model testing with human vote',
+      gateText:'Deferred F2 · gated to Adaptive unlock',
+      rationale:'Discarded from F1: beta volume insufficient for N≥20 per model-pair comparison',
+      refs:['DEC-007','ENT_PLAT_LLM_ROUTING §G.4']
+    },
+    {
+      id:'F2.C', title:'Adversarial Critic — Second-pass validation of swarm output',
+      gateText:'Deferred F2',
+      rationale:'F1 Research Swarm implementa paralelo → merge directo SIN critic. Critic se suma cuando swarm madure.',
+      refs:['SPEC_FABERLOOM_RESEARCH_SWARM_v1 (pending CEO Q11)']
+    }
+  ]
+  };
+
+  /* [V3.5-PATCH 2026-04-19] enrich agents with full AgentSpec fields (A4 P1) */
+  (function enrichAgentsWithSpec() {
+    const enrich = {
+      ag_cotizador: { specVersion:'1.0.3', autonomyCeiling:'L2', escalationPolicy:'monto>500k → owner; cliente_no_recurrente → admin', kbRefs:['ENT_PROD_MAN','POL_MX_001','price_table_2026','stock_lookup'], connectorBindings:['co_postmark','co_gdrive'], events:['rfq_received','followup_due','stock_alert'], stateMachine:'default_v1', learningConsolidation:'manual_only', triggerKind:'word', tier:'demo-critical', specSupersedes:'1.0.2', createdAt:'2026-01-15', createdBy:'u_alvaro' },
+      ag_followup:  { specVersion:'0.2.0', autonomyCeiling:'L1', escalationPolicy:'sin respuesta 7d → notify owner',                kbRefs:['POL_MX_001'],                                                  connectorBindings:['co_postmark'],            events:['quote_unanswered_7d'],          stateMachine:'default_v1', learningConsolidation:'manual_only', triggerKind:'event', tier:'experimental', specSupersedes:null, createdAt:'2026-03-15', createdBy:'u_alvaro' },
+      ag_bant:      { specVersion:'1.2.1', autonomyCeiling:'L2', escalationPolicy:'authority unclear → ask user',                    kbRefs:['ENT_GOB_PROCESOS','crm_schema'],                               connectorBindings:['co_postmark'],            events:['lead_inbound'],                  stateMachine:'default_v1', learningConsolidation:'auto_with_review', triggerKind:'word', tier:'hot', specSupersedes:'1.2.0', createdAt:'2026-02-10', createdBy:'u_ana' },
+      ag_summarizer:{ specVersion:'2.1.0', autonomyCeiling:'L3', escalationPolicy:'doc>50pp → ask owner',                            kbRefs:[],                                                              connectorBindings:[],                          events:['daily_cron'],                    stateMachine:'simple', learningConsolidation:'auto_with_review', triggerKind:'schedule', tier:'internal', specSupersedes:'2.0.5', createdAt:'2025-11-01', createdBy:'u_alvaro' },
+      ag_triage:    { specVersion:'2.0.0', autonomyCeiling:'L4', escalationPolicy:'P0/P1 ticket → owner; tier1 cliente → admin',     kbRefs:['triage_playbook','sales_log'],                                  connectorBindings:['co_postmark'],            events:['ticket_inbound'],               stateMachine:'default_v1', learningConsolidation:'auto_with_review', triggerKind:'event', tier:'hot', specSupersedes:'1.5.4', createdAt:'2025-10-01', createdBy:'u_alvaro' },
+      ag_pipeline:  { specVersion:'0.5.0', autonomyCeiling:'L2', escalationPolicy:'oportunidad>200k → admin',                        kbRefs:['crm_schema','price_table_2026'],                               connectorBindings:[],                          events:['daily_cron','deal_stage_change'], stateMachine:'default_v1', learningConsolidation:'manual_only', triggerKind:'word', tier:'cold', specSupersedes:null, createdAt:'2026-04-01', createdBy:'u_ana' },
+      ag_saludo:    { specVersion:'1.0.0', autonomyCeiling:'L3', escalationPolicy:'first_contact → log only',                        kbRefs:[],                                                              connectorBindings:['co_postmark'],            events:['new_customer_signup'],          stateMachine:'simple', learningConsolidation:'manual_only', triggerKind:'event', tier:'cold', specSupersedes:null, createdAt:'2026-02-20', createdBy:'u_ana' }
+    };
+    (MOCK.agents || []).forEach(a => {
+      const e = enrich[a.id]; if (!e) return;
+      Object.keys(e).forEach(k => { if (a[k] === undefined) a[k] = e[k]; });
+      if (!a.lifecycleStatus) a.lifecycleStatus = a.state === 'shadow' ? 'shadow' : a.state === 'idle' ? 'paused' : 'active';
+    });
+  })();
+
+  FL.mock = MOCK;
+})();

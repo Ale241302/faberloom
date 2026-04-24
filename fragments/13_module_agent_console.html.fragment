@@ -1,0 +1,408 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null;
+
+  function mount(slot, ctx) {
+    root = slot; injectStyles();
+    const id = ctx.params.id || 'ag_cotizador';
+    const agent = FL.mock.agents.find(a => a.id === id) || FL.mock.agents[0];
+    render(agent);
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  function levelIdx(code) {
+    const m = { L0:0, L1:1, L2:2, L3:3, L4:4 };
+    return m[code] != null ? m[code] : 0;
+  }
+
+  function render(agent) {
+    const t = k => i18n.t(k);
+    const idx = levelIdx(agent.autonomy);
+    const therm = W.thermometer(agent.thermometer && agent.thermometer.state || 'cold', agent.thermometer && agent.thermometer.value || 0);
+    const ladder = W.autonomyLadder(idx, { unlock: agent.unlockCriterion });
+
+    /* [V2-PATCH 2026-04-19] 5th tab Conversación
+       [V3.5-PATCH 2026-04-19] 6th tab Versionado */
+    const tabs = W.tabs([
+      { id: 'summary',      label: t('agent.tab_summary'),      panel: renderSummary(agent, ladder) },
+      { id: 'conversation', label: t('nav.chat', 'Conversación'), panel: renderConversation(agent) },
+      { id: 'skills',       label: t('agent.tab_skills'),        panel: renderSkills(agent) },
+      { id: 'memory',       label: t('agent.tab_memory'),        panel: renderMemory(agent) },
+      { id: 'logs',         label: t('agent.tab_logs'),          panel: renderLogs(agent) },
+      { id: 'versioning',   label: t('agent.tab_versioning', 'Versionado'), panel: renderVersioning(agent) }
+    ], { active: 'summary' });
+
+    /* [V3.5-PATCH 2026-04-19] lifecycle controls + spec version */
+    const canManage = FL.session.role === 'owner' || FL.session.role === 'admin';
+    const status = agent.lifecycleStatus || 'active';
+    /* [V4-PATCH 2026-04-22] Sealed/Open origin + Fork CTA */
+    const flags = (FL.mock.sealedOpenFlags && FL.mock.sealedOpenFlags.agents && FL.mock.sealedOpenFlags.agents[agent.id]) || { origin:'open' };
+    const sealedBadge = W.sealedOpenBadge(flags.origin);
+    const forkCta = flags.origin === 'sealed' ? W.forkToOpenCta(agent.id, 'agent') : '';
+    root.innerHTML =
+      '<div class="ac-wrap">' +
+        '<header class="ac-head">' +
+          '<div><h1 class="t-display-md">' + agent.name + ' ' + sealedBadge + '</h1>' +
+          '<p class="t-body-sm muted">Trigger: <code>' + (agent.triggerWord || '—') + '</code> ' +
+          '<span class="chip" style="font-size:10px;">' + (agent.triggerKind || (agent.triggerWord && agent.triggerWord.startsWith('/') ? 'word' : agent.triggerWord === '(auto)' ? 'event' : agent.triggerWord === '(interno)' ? 'schedule' : 'word')) + '</span> · ' +
+          'State: <strong>' + status + '</strong> · Tier: <span class="chip">' + agent.tier + '</span> · ' +
+          'Spec: <code>v' + (agent.specVersion || '?') + '</code>' +
+          (flags.spec_sealed_hash ? ' · sealed hash <code class="t-mono" style="font-size:10px;">' + flags.spec_sealed_hash + '</code>' : '') +
+          (flags.forkedFrom ? ' · forked from <code>' + flags.forkedFrom + '</code>' : '') +
+          '</p>' +
+          '<p class="t-body-sm muted"><a href="#/agentes" style="color:var(--accent-primary);">← Lista de agentes</a></p></div>' +
+          '<div class="ac-head-side">' + therm +
+            (forkCta ? ' ' + forkCta : '') +
+            (canManage ? ' <button class="btn btn-sm" data-life="edit">✎ Editar Spec</button>' +
+                         ' <button class="btn btn-sm" data-life="clone">⎘ Clonar</button>' +
+                         (status === 'active' ? ' <button class="btn btn-sm" data-life="pause">⏸ Pausar</button>' : status === 'paused' || status === 'shadow' ? ' <button class="btn btn-sm" data-life="resume">▶ Reactivar</button>' : '') +
+                         (status !== 'retired' ? ' <button class="btn btn-sm btn-ghost" data-life="retire">🗑 Retirar</button>' : '')
+              : '') +
+          '</div>' +
+        '</header>' +
+        tabs +
+      '</div>';
+    W.wireTabs(root.querySelector('[data-widget="tabs"]'));
+    /* [V3-PATCH 2026-04-19] wire embedded chatThread inside conversation tab */
+    const dbgThread = root.querySelector('.fl-cthread');
+    if (dbgThread) W.wireChatThread(dbgThread, {
+      onSend: text => FL.bus.emit('toast', { kind:'info', message:'Debug thread · enviado: "' + text.slice(0, 40) + '..."' })
+    });
+    /* [V4-PATCH 2026-04-22] Authority slider + Position + Fork-to-Open wiring */
+    W.wireForkCta && W.wireForkCta(root, (entityId) => {
+      FL.mock.auditEvents && FL.mock.auditEvents.unshift({
+        id:'ae_' + Date.now(), ts:new Date().toISOString(), actorId:FL.session.userId,
+        kind:'agent_fork_to_open', level:'INFO', resourceType:'agent_spec', resourceId:entityId,
+        summary:'Agent ' + entityId + ' forkeado a Open · reset to L0 Shadow · memoria aislada · sin canal updates'
+      });
+    });
+    W.wireAuthoritySlider && W.wireAuthoritySlider(root, (newMode) => {
+      agent.authorityMode = newMode;
+      FL.mock.auditEvents && FL.mock.auditEvents.unshift({
+        id:'ae_' + Date.now(), ts:new Date().toISOString(), actorId:FL.session.userId,
+        kind:'agent_authority_change', level:'INFO', resourceType:'agent_spec', resourceId:agent.id,
+        summary:'Authority mode → ' + newMode + ' (ladder=' + agent.autonomy + ')'
+      });
+      FL.bus.emit('toast', { kind:'info', message:'Authority mode: ' + newMode + ' · canales externos siempre draft-first.' });
+    });
+    /* Position field change */
+    const posSel = root.querySelector('[data-field="position"]');
+    if (posSel) posSel.addEventListener('change', () => {
+      agent.positionId = posSel.value;
+      FL.mock.auditEvents && FL.mock.auditEvents.unshift({
+        id:'ae_' + Date.now(), ts:new Date().toISOString(), actorId:FL.session.userId,
+        kind:'agent_position_change', level:'INFO', resourceType:'agent_spec', resourceId:agent.id,
+        summary:'Position → ' + posSel.value + ' (D12 · position_id owns skills/memory, not user_id)'
+      });
+      FL.bus.emit('toast', { kind:'info', message:'Position actualizada · skills/memoria pertenecen a la posición, no al usuario.' });
+    });
+    /* [V3-PATCH 2026-04-19] promote button → modal con evidencia + CEO approval */
+    const pb = root.querySelector('[data-act="promote-agent"]');
+    if (pb) pb.addEventListener('click', () => openPromoteModal(agent));
+
+    /* [V3.5-PATCH 2026-04-19] lifecycle controls in header */
+    root.querySelectorAll('[data-life]').forEach(b => {
+      b.addEventListener('click', () => handleLifecycle(b.getAttribute('data-life'), agent));
+    });
+    /* [V3.5-PATCH 2026-04-19] rollback buttons in versioning tab */
+    root.querySelectorAll('[data-rollback]').forEach(b => {
+      b.addEventListener('click', () => handleRollback(agent, b.getAttribute('data-rollback')));
+    });
+  }
+
+  function handleLifecycle(action, agent) {
+    if (action === 'pause') { agent.lifecycleStatus = 'paused'; logAudit(agent.id, 'agent_spec.paused'); FL.bus.emit('toast', { kind:'info', message:'Agente pausado' }); render(agent); return; }
+    if (action === 'resume') { agent.lifecycleStatus = 'active'; logAudit(agent.id, 'agent_spec.resumed'); FL.bus.emit('toast', { kind:'success', message:'Agente reactivado' }); render(agent); return; }
+    if (action === 'retire') {
+      if (!confirm('Retirar agente "' + agent.name + '"? Soft retire (no se borra).')) return;
+      agent.lifecycleStatus = 'retired'; logAudit(agent.id, 'agent_spec.retired');
+      FL.bus.emit('toast', { kind:'warn', message:'Agente retirado · audit_event registrado' });
+      render(agent); return;
+    }
+    if (action === 'edit') {
+      W.openAgentSpecWizard({
+        mode:'edit', initial:agent,
+        onSubmit: spec => {
+          const newV = bumpVersion(agent.specVersion || '1.0.0');
+          agent.specSupersedes = agent.specVersion;
+          agent.specVersion = newV;
+          Object.assign(agent, spec);
+          FL.mock.agentSpecVersions.push({ id:'asv_' + Date.now(), agentId:agent.id, specVersion:newV, publishedAt:new Date().toISOString(), publishedBy:FL.session.userId, supersedes:agent.specSupersedes, changeNote:'Edit via wizard' });
+          logAudit(agent.id, 'agent_spec.published');
+          FL.bus.emit('toast', { kind:'success', message:'✓ AgentSpec v' + newV + ' publicada · supersedes v' + agent.specSupersedes });
+          render(agent);
+        }
+      });
+    }
+    if (action === 'clone') {
+      W.openAgentSpecWizard({
+        mode:'clone', initial:Object.assign({}, agent, { id:null }),
+        onSubmit: spec => {
+          FL.bus.emit('toast', { kind:'success', message:'✓ Clon configurado · ir a /agentes para verlo en lista' });
+          location.hash = '#/agentes';
+        }
+      });
+    }
+  }
+
+  function handleRollback(agent, targetVersion) {
+    if (!confirm('Rollback de v' + agent.specVersion + ' a v' + targetVersion + '? Esto crea una NUEVA versión que copia el contenido de v' + targetVersion + ' (no rebobina histórico).')) return;
+    const newV = bumpVersion(agent.specVersion);
+    const prev = agent.specVersion;
+    agent.specSupersedes = prev;
+    agent.specVersion = newV;
+    FL.mock.agentSpecVersions.push({ id:'asv_' + Date.now(), agentId:agent.id, specVersion:newV, publishedAt:new Date().toISOString(), publishedBy:FL.session.userId, supersedes:prev, changeNote:'Rollback to v' + targetVersion + ' content (forward-only via new version)' });
+    logAudit(agent.id, 'agent_spec.published');
+    FL.bus.emit('toast', { kind:'success', message:'✓ Rollback completado · v' + newV + ' clona contenido de v' + targetVersion });
+    render(agent);
+  }
+
+  function bumpVersion(v) {
+    const parts = String(v).split('.');
+    parts[parts.length - 1] = String(parseInt(parts[parts.length - 1] || '0', 10) + 1);
+    return parts.join('.');
+  }
+  function logAudit(agentId, action) {
+    FL.mock.auditEvents.unshift({ id:'ae_' + Date.now(), ts:new Date().toISOString(), tenantId:FL.session.tenantId, actor:FL.session.userId, action, target:agentId, severity:'INFO', ip:'10.0.0.1', userAgent:'FaberLoom/1.0' });
+  }
+
+  function openPromoteModal(agent) {
+    const k = agent.kpis;
+    const idx = levelIdx(agent.autonomy);
+    const targetLevel = 'L' + (idx + 1);
+    W.openModal(
+      '<h2 id="fl-modal-title" class="t-heading-lg" style="margin:0 0 var(--space-3);">🚀 Promover ' + agent.name + ' a ' + targetLevel + '</h2>' +
+      '<div class="t-body-sm muted" style="margin-bottom:var(--space-3);">Esto envía un evento al Tenant Owner (CEO) para revisión final.</div>' +
+      '<dl class="bd-risk-grid">' +
+      '<dt>Nivel actual</dt><dd>' + agent.autonomy + '</dd>' +
+      '<dt>Nivel propuesto</dt><dd><strong style="color:var(--accent-primary);">' + targetLevel + '</strong></dd>' +
+      '<dt>Runs 30d</dt><dd><code>' + k.runs30d + '</code></dd>' +
+      '<dt>Approval rate</dt><dd><code>' + (k.approvalRate * 100).toFixed(1) + '%</code></dd>' +
+      '<dt>Fail rate</dt><dd><code>' + (k.failRate * 100).toFixed(1) + '%</code></dd>' +
+      '<dt>Costo USD 30d</dt><dd><code>$' + k.costUSD30d + '</code></dd>' +
+      '<dt>Approval thresholds</dt><dd class="muted">≥10 runs · ≥80% approval · ≤10% rejection · ≥14d estables · CEO required (A4 P4)</dd>' +
+      '</dl>' +
+      '<div style="display:flex;gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-4);">' +
+        '<button class="btn" data-promo-act="cancel">Cancelar</button>' +
+        '<button class="btn btn-primary" data-promo-act="send">Enviar al CEO</button>' +
+      '</div>',
+      { width: 540 }
+    );
+    document.querySelector('[data-promo-act="cancel"]').addEventListener('click', () => W.closeModal());
+    document.querySelector('[data-promo-act="send"]').addEventListener('click', () => {
+      /* push an inbox item for the owner */
+      FL.mock.inboxItems.unshift({
+        id:'in_promo_' + Date.now(), kind:'approval_request', tenantId:FL.session.tenantId,
+        from:{ name:'Sistema', email:'system@faberloom', channel:'system' },
+        subject:'Aprobación promoción ' + agent.name + ' → ' + targetLevel,
+        preview:'Solicitud de promoción a ' + targetLevel + ' basada en evidencia (≥10 runs, ' + (k.approvalRate*100).toFixed(0) + '% approval). CEO requerido per A4 P4.',
+        receivedAt: new Date().toISOString(), state:'pending_my_approval', priority:'high',
+        assignedTo:'u_alvaro',
+        metadata:{ agentId:agent.id, fromLevel:agent.autonomy, toLevel:targetLevel, evidence:{ runs:k.runs30d, approval:k.approvalRate, fail:k.failRate } }
+      });
+      W.closeModal();
+      FL.bus.emit('toast', { kind:'success', message:'Solicitud enviada al CEO · visible en bandeja como approval_request' });
+    });
+  }
+
+  function renderSummary(agent, ladder) {
+    const k = agent.kpis;
+    const kpiHtml = (label, val) => '<div class="ac-kpi"><div class="t-label-sm muted">' + label + '</div><div class="t-display-sm">' + val + '</div></div>';
+    const kpiRow =
+      kpiHtml(i18n.t('agent.kpi_runs'), k.runs30d) +
+      kpiHtml(i18n.t('agent.kpi_approval'), (k.approvalRate * 100).toFixed(0) + '%') +
+      kpiHtml(i18n.t('agent.kpi_latency'), k.avgLatencyMin + 'min') +
+      kpiHtml(i18n.t('agent.kpi_fail'), (k.failRate * 100).toFixed(0) + '%') +
+      kpiHtml(i18n.t('agent.kpi_cost'), '$' + k.costUSD30d);
+
+    /* [V3-PATCH 2026-04-19] Ready-to-promote CTA per A4 thresholds */
+    const checkReady = () => {
+      const idx = levelIdx(agent.autonomy);
+      if (idx >= 4) return { ready:false, msg:'Nivel máximo alcanzado.' };
+      // SHADOW→L1 exception: ≥3 runs + >70% approval
+      if (idx === 0) {
+        const ok = k.runs30d >= 3 && k.approvalRate > 0.70;
+        return { ready: ok, msg: ok
+          ? '✓ Listo para subir a L1 PROPONE (≥3 runs SHADOW + >70% approval cumplido).'
+          : '⏳ ' + k.runs30d + '/3 runs · ' + (k.approvalRate * 100).toFixed(0) + '%/70% approval. Falta evidencia para SHADOW→L1.' };
+      }
+      // global thresholds: ≥10 runs · ≥80% · ≤10% reject · ≥14 días estables
+      const ok = k.runs30d >= 10 && k.approvalRate >= 0.80 && k.failRate <= 0.10;
+      return { ready: ok, msg: ok
+        ? '✓ Listo para subir a L' + (idx + 1) + '. Cumple thresholds globales A4.'
+        : '⏳ Pendiente · runs ' + k.runs30d + '/10 · approval ' + (k.approvalRate * 100).toFixed(0) + '%/80% · fail ' + (k.failRate * 100).toFixed(0) + '%/10%' };
+    };
+    const ready = checkReady();
+    const promoteCta = '<section class="card ac-promote-cta" style="border-left:3px solid ' + (ready.ready ? 'var(--status-success)' : 'var(--status-warning)') + ';">' +
+      '<div class="row-between"><h3 class="t-heading-md" style="margin:0;">' + (ready.ready ? '🚀 Listo para promover' : '⏳ Onboarding en progreso') + '</h3>' +
+      (ready.ready ? '<button class="btn btn-primary btn-sm" data-act="promote-agent">Solicitar promoción a CEO</button>' : '') +
+      '</div>' +
+      '<p class="t-body-sm" style="margin:var(--space-2) 0 0;">' + ready.msg + '</p>' +
+      '<p class="t-body-sm muted" style="margin:var(--space-1) 0 0;">Aprobación final: <strong>Tenant Owner (CEO)</strong> per A4 P4.</p>' +
+      '</section>';
+
+    /* [V4-PATCH 2026-04-22] Position + Authority cards (D12 + SPEC_AGENT §6) */
+    const positionCatalog = FL.mock.positionCatalog || [];
+    const currentPositionId = agent.positionId || 'sales_rep';
+    const currentPosition = positionCatalog.find(p => p.id === currentPositionId) || positionCatalog[0] || {};
+    const positionOpts = positionCatalog.map(p =>
+      '<option value="' + p.id + '"' + (p.id === currentPositionId ? ' selected' : '') + '>' + p.title + '</option>'
+    ).join('');
+    const positionCard = (
+      '<section class="card ac-position">' +
+        '<header class="row-between"><h3 class="t-heading-sm">Position · D12</h3>' +
+          '<span class="chip chip-neutral">position_id owns skills/memory (no user_id)</span></header>' +
+        '<div class="ac-position__grid">' +
+          '<label><span class="t-label-sm muted">Posición en la organización</span>' +
+            '<select class="select" data-field="position">' + positionOpts + '</select>' +
+          '</label>' +
+          '<div><span class="t-label-sm muted">Efectos</span>' +
+            '<p class="t-body-sm" style="margin:2px 0 0;">' + (currentPosition.influence || '—') + '</p>' +
+          '</div>' +
+        '</div>' +
+      '</section>'
+    );
+    const currentLadder = agent.autonomy || 'L0';
+    const currentAuth = agent.authorityMode || 'PROPONE';
+    const authoritySlider = (
+      '<section class="card ac-authority">' +
+        '<header class="row-between"><h3 class="t-heading-sm">Authority · eje separado de Autonomy Ladder</h3>' +
+          '<span class="chip">Current: <strong>' + currentLadder + ' · ' + currentAuth + '</strong></span></header>' +
+        '<p class="t-body-sm muted" style="margin:var(--space-1) 0 var(--space-2);">' +
+        'La <strong>Autonomy Ladder</strong> (L0-L4) decide <em>qué tan autónomo</em>. ' +
+        'La <strong>Authority</strong> decide <em>qué acción toma</em>: Signal · Draft · Exec+approve · Exec solo. ' +
+        'La matriz válida está hardcoded en el motor (SPEC_AGENT_COMPOSITION §6).</p>' +
+        W.authoritySlider(currentAuth, currentLadder) +
+      '</section>'
+    );
+
+    return (
+      '<div class="ac-summary">' +
+      '<div class="ac-kpis">' + kpiRow + '</div>' +
+      '<section class="card">' + ladder + '</section>' +
+      positionCard +
+      authoritySlider +
+      promoteCta +
+      '</div>'
+    );
+  }
+
+  function renderSkills(agent) {
+    const rows = (agent.skills || []).map(sid => {
+      const s = FL.mock.skills[sid];
+      if (!s) return '<li><code>' + sid + '</code> <span class="muted">(no data)</span></li>';
+      return '<li class="ac-sk"><a href="#/skills/' + sid + '"><strong>' + s.name + '</strong></a> ' +
+        W.thermometer(s.temperatureState, s.temperature) + '</li>';
+    }).join('');
+    return '<ul class="ac-list">' + rows + '</ul>';
+  }
+
+  function renderMemory(agent) {
+    const m = agent.memory || { runSession: 0, orgAccount: 0, curated: 0 };
+    return '<div class="ac-mem">' +
+      memCard(i18n.t('agent.memory.run_session'), m.runSession) +
+      memCard(i18n.t('agent.memory.org_account'), m.orgAccount) +
+      memCard(i18n.t('agent.memory.curated'), m.curated) +
+      '</div>';
+  }
+  function memCard(label, val) {
+    return '<div class="ac-mem__card"><div class="t-label-sm muted">' + label + '</div><div class="t-display-md">' + val + '</div></div>';
+  }
+
+  /* [V2-PATCH 2026-04-19] Conversation tab content
+     [V3-PATCH 2026-04-19] embed chatThread primitive for live debug */
+  function renderConversation(agent) {
+    const convs = FL.mock.conversations.filter(c => c.agentId === agent.id);
+    const lastConv = convs[0];
+    const convList = convs.length
+      ? '<ul class="ac-list">' + convs.slice(0, 5).map(c => (
+          '<li class="ac-sk"><a href="#/chat/' + c.id + '"><strong>' + c.title + '</strong></a>' +
+          '<span class="muted t-body-sm">' + c.messageCount + ' msgs · ' + (c.lastMessageAt || '').slice(0, 10) + '</span></li>'
+        )).join('') + '</ul>'
+      : '<p class="muted t-body-sm">Sin conversaciones todavía.</p>';
+    /* embed thread primitive for the most recent conversation, scope=debug */
+    const debugThread = lastConv ? W.chatThread({
+      conversationId: lastConv.id,
+      contextLabel: 'Debug · ' + agent.name + ' · última conversación',
+      scope: 'debug',
+      placeholder: 'Mensaje al agente para debug…'
+    }) : '';
+    return (
+      '<div class="ac-conv">' +
+        '<a class="btn btn-primary" href="#/chat/new?agent=' + agent.id + '">' +
+          '💬 ' + i18n.t('chat.open_chat_with_agent', 'Abrir chat con este agente') +
+        '</a>' +
+        '<div class="t-body-sm muted" style="margin:var(--space-3) 0;">Esto abre el chat con <strong>' + agent.name + '</strong> pineado y sus skills activos pre-cargados.</div>' +
+        '<h4 class="t-label-md" style="margin-top:var(--space-4);">Conversaciones recientes</h4>' +
+        convList +
+        (debugThread ? '<h4 class="t-label-md" style="margin-top:var(--space-4);">Debug thread embebido</h4>' + debugThread : '') +
+      '</div>'
+    );
+  }
+
+  /* [V3.5-PATCH 2026-04-19] Versionado tab — AgentSpec lineage */
+  function renderVersioning(agent) {
+    const versions = (FL.mock.agentSpecVersions || []).filter(v => v.agentId === agent.id).sort((a, b) => Date.parse(b.publishedAt) - Date.parse(a.publishedAt));
+    if (!versions.length) return '<p class="muted">Sin historial de versiones (agente recién creado o sin edits posteriores).</p>';
+    return (
+      '<div class="ac-vers">' +
+        '<div class="t-body-sm muted" style="margin-bottom:var(--space-3);">A4 P1: AgentSpec es estática + versionada + inmutable entre ejecuciones. Cada edit publica nueva versión + supersedes anterior. No se borra (per A5 §7).</div>' +
+        '<table class="ac-table">' +
+          '<thead><tr><th>Versión</th><th>Publicado</th><th>Por</th><th>Supersedes</th><th>Cambio</th><th>Acción</th></tr></thead>' +
+          '<tbody>' + versions.map((v, i) => (
+            '<tr' + (v.specVersion === agent.specVersion ? ' style="background:var(--accent-primary-soft);"' : '') + '>' +
+              '<td><code>v' + v.specVersion + '</code>' + (v.specVersion === agent.specVersion ? ' <span class="chip chip-success" style="font-size:10px;">current</span>' : '') + '</td>' +
+              '<td class="mono muted">' + v.publishedAt.slice(0, 16).replace('T', ' ') + '</td>' +
+              '<td>' + v.publishedBy + '</td>' +
+              '<td class="mono">' + (v.supersedes ? 'v' + v.supersedes : '<span class="muted">—</span>') + '</td>' +
+              '<td>' + v.changeNote + '</td>' +
+              '<td>' + (v.specVersion !== agent.specVersion ? '<button class="btn btn-sm" data-rollback="' + v.specVersion + '">↩ Rollback</button>' : '<span class="muted">—</span>') + '</td>' +
+            '</tr>'
+          )).join('') + '</tbody>' +
+        '</table>' +
+      '</div>'
+    );
+  }
+
+  function renderLogs(agent) {
+    const runs = FL.mock.runs.filter(r => r.agentId === agent.id).slice(0, 20);
+    if (!runs.length) return W.emptyState({ title: 'Sin runs', icon: '○' });
+    return '<table class="ac-table"><thead><tr><th>id</th><th>startedAt</th><th>finalState</th><th>tokens</th><th>$</th></tr></thead>' +
+      '<tbody>' + runs.map(r => '<tr><td><code>' + r.id + '</code></td><td class="mono muted">' + r.startedAt.slice(5, 16) + '</td><td>' + W.draftStateBadge(r.finalState) + '</td><td class="mono">' + r.tokensUsed + '</td><td class="mono">$' + r.costUSD + '</td></tr>').join('') + '</tbody></table>';
+  }
+
+  function injectStyles() {
+    if (document.getElementById('ac-styles')) return;
+    const s = document.createElement('style'); s.id = 'ac-styles';
+    s.textContent = `
+.ac-wrap { display:flex; flex-direction:column; gap:var(--space-5); max-width:1280px; }
+.ac-head { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--space-3); flex-wrap:wrap; }
+.ac-head h1 { margin:0 0 var(--space-1); }
+.ac-summary { display:flex; flex-direction:column; gap:var(--space-4); }
+.ac-kpis { display:grid; grid-template-columns:repeat(auto-fit, minmax(140px, 1fr)); gap:var(--space-3); }
+.ac-kpi { padding:var(--space-3); background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-md); }
+.ac-kpi .t-display-sm { margin-top:var(--space-1); color:var(--accent-primary); }
+.ac-list { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:var(--space-2); }
+.ac-sk { padding:var(--space-3); background:var(--bg-subtle); border-radius:var(--radius-md); display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); }
+.ac-sk a { color:var(--accent-primary); text-decoration:none; }
+.ac-sk a:hover { text-decoration:underline; }
+.ac-mem { display:grid; grid-template-columns:repeat(3, 1fr); gap:var(--space-4); }
+@media (max-width: 700px) { .ac-mem { grid-template-columns:1fr; } }
+.ac-mem__card { padding:var(--space-4); background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-lg); }
+.ac-mem__card .t-display-md { color:var(--accent-primary); margin-top:var(--space-1); }
+.ac-table { width:100%; border-collapse:collapse; font-size:12px; }
+.ac-table th, .ac-table td { padding:var(--space-2); text-align:left; border-bottom:1px solid var(--stroke-default); }
+.ac-table th { font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); font-weight:600; }
+/* [V4-PATCH 2026-04-22] Position + Authority cards */
+.ac-position__grid { display:grid; grid-template-columns:minmax(220px, 1fr) 2fr; gap:var(--space-3); margin-top:var(--space-2); align-items:start; }
+@media (max-width: 700px) { .ac-position__grid { grid-template-columns:1fr; } }
+.ac-authority { display:flex; flex-direction:column; gap:var(--space-2); }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['agent-console'] = { mount, meta: { route: '/agentes/:id' } };
+})();
+</script>

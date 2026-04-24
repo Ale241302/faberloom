@@ -1,0 +1,215 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null;
+
+  function mount(slot, ctx) {
+    root = slot; injectStyles();
+    const id = ctx.params.id || 'sk_cotizar';
+    const skill = FL.mock.skills[id] || FL.mock.skills.sk_cotizar;
+    render(skill);
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  function render(skill) {
+    const t = k => i18n.t(k);
+    const therm = W.thermometer(skill.temperatureState || 'cold', skill.temperature || 0);
+    const canConsolidate = skill.temperatureState === 'hot';
+    /* [V4-PATCH 2026-04-22] Sealed/Open origin + Fork-to-Open CTA */
+    const flags = (FL.mock.sealedOpenFlags && FL.mock.sealedOpenFlags.skills && FL.mock.sealedOpenFlags.skills[skill.id]) || { origin:'open' };
+    const sealedBadge = W.sealedOpenBadge(flags.origin);
+    const forkCta = flags.origin === 'sealed' ? W.forkToOpenCta(skill.id, 'skill') : '';
+    root.innerHTML =
+      '<div class="ss-wrap">' +
+      '<header class="ss-head">' +
+        '<div><h1 class="t-display-md">' + skill.name + ' ' + sealedBadge + '</h1>' +
+        '<p class="t-body-sm muted">' + (skill.base.version ? 'v' + skill.base.version : '') + ' · <code>' + skill.id + '</code>' +
+        (flags.base_sealed_hash ? ' · sealed hash <code class="t-mono" style="font-size:10px;">' + flags.base_sealed_hash + '</code>' : '') +
+        (flags.forkedFrom ? ' · forked from <code>' + flags.forkedFrom + '</code>' : '') +
+        '</p></div>' +
+        '<div class="ss-head-actions">' + therm +
+          (forkCta ? ' ' + forkCta : '') +
+          (canConsolidate
+            ? ' <button class="btn btn-primary" data-act="consolidate">◈ ' + t('skill.consolidate') + '</button>'
+            : '') +
+        '</div>' +
+      '</header>' +
+      /* [V4-PATCH 2026-04-22] Voice Profile (6th Add-on · tenant-level) cross-link */
+      voiceProfileCrossLink(flags.origin) +
+      '<div class="ss-cols">' +
+        colBase(skill) + colManual(skill) + colLearned(skill) +
+      '</div>' +
+      (skill.goldSamples && skill.goldSamples.length ? goldSection(skill) : '') +
+      /* [V3-PATCH 2026-04-19] sandbox embed via chatThread primitive */
+      '<section class="ss-sandbox card">' +
+        '<header class="row-between"><h3 class="t-heading-md">🧪 Sandbox · probá esta versión del skill</h3>' +
+        '<button class="btn btn-sm" data-act="toggle-sandbox">Toggle</button></header>' +
+        '<div id="ss-sandbox-slot" hidden></div>' +
+      '</section>' +
+      '</div>';
+
+    /* [V3-PATCH 2026-04-19] sandbox toggle */
+    const tg = root.querySelector('[data-act="toggle-sandbox"]');
+    if (tg) tg.addEventListener('click', () => {
+      const slot = document.getElementById('ss-sandbox-slot');
+      if (!slot) return;
+      if (!slot.hidden) { slot.hidden = true; slot.innerHTML = ''; return; }
+      slot.hidden = false;
+      slot.innerHTML = W.chatThread({
+        conversationId: 'ss_sandbox_' + skill.id,
+        contextLabel: 'Sandbox · ' + skill.name + ' v' + (skill.base.version || '?'),
+        scope: 'sandbox',
+        messages: [{ role:'agent', content:'Hola, soy el skill <code>' + skill.id + '</code> en modo sandbox. Probame con un caso real para ver si el output cambia con la última versión del overlay aprendido.', timestamp: new Date().toISOString() }],
+        placeholder: 'Probá el skill con un caso real…'
+      });
+      W.wireChatThread(slot.querySelector('.fl-cthread'), {
+        onSend: text => FL.bus.emit('toast', { kind:'info', message:'Sandbox · respuesta simulada para "' + text.slice(0, 50) + '..."' })
+      });
+    });
+
+    const cb = root.querySelector('[data-act="consolidate"]');
+    if (cb) cb.addEventListener('click', () => {
+      W.openConsolidationModal({
+        id: 'cons_live', skillId: skill.id, thermometer: skill.temperatureState, patternCount: skill.temperature,
+        accumulatedSince: (skill.learnedPatterns[0] && skill.learnedPatterns[0].firstSeen) || '',
+        scope: 'skill', learnType: 'skill_refinement', crossSkill: false,
+        suggestedRule: (skill.learnedPatterns[0] && skill.learnedPatterns[0].pattern) || '',
+        impactPreview: { before: 'Draft sin patrón consolidado', after: 'Draft aplica patrón aprobado automáticamente' }
+      });
+    });
+
+    /* [V4-PATCH 2026-04-22] wire fork-to-open CTA */
+    W.wireForkCta && W.wireForkCta(root, (entityId) => {
+      FL.mock.auditEvents && FL.mock.auditEvents.unshift({
+        id:'ae_' + Date.now(), ts:new Date().toISOString(), actorId:FL.session.userId,
+        kind:'skill_fork_to_open', level:'INFO', resourceType:'skill', resourceId:entityId,
+        summary:'Skill ' + entityId + ' forkeado a Open (editable · sin canal updates)'
+      });
+    });
+  }
+
+  /* [V4-PATCH 2026-04-22] Voice Profile 6th Add-on cross-link card */
+  function voiceProfileCrossLink(origin) {
+    const vp = FL.mock.voiceProfile || {};
+    if (!vp.enabled) return '';
+    const overlayNote = origin === 'sealed' ? vp.sealedBehavior : vp.openBehavior;
+    return (
+      '<section class="ss-voice-profile card" aria-label="Voice Profile add-on">' +
+        '<header class="row-between">' +
+          '<div>' +
+            '<h3 class="t-heading-sm">🎙 Voice Profile · 6º Add-on ' + W.pendingCeoFlag('Q1', 'per-tenant F1 o per-user F2', 'per-tenant F1') + '</h3>' +
+            '<p class="t-body-sm muted">Reemplaza Arena (descartado · DEC-007) · tenant-level · ' + overlayNote + '</p>' +
+          '</div>' +
+          '<a class="btn btn-sm" href="#/admin/llm-orchestration/voice">Editar voice profile ↗</a>' +
+        '</header>' +
+        '<div class="ss-voice-summary">' +
+          '<span class="chip">tono: <strong>' + (vp.tone || '—') + '</strong></span>' +
+          '<span class="chip">lang: <strong>' + (vp.primaryLanguage || '—') + '</strong></span>' +
+          '<span class="chip chip-danger">blocked: ' + (vp.blockedTerms || []).length + '</span>' +
+          '<span class="chip">preferred: ' + (vp.preferredTerms || []).length + '</span>' +
+        '</div>' +
+      '</section>'
+    );
+  }
+
+  function colBase(s) {
+    const b = s.base;
+    return (
+      '<section class="ss-col ss-col--base">' +
+      '<header class="ss-col__head"><h2 class="t-heading-md">' + i18n.t('skill.col_base') + '</h2>' +
+        /* [V2-PATCH 2026-04-19] sealed pattern badge */
+        W.patternBadge({ kind: 'sealed' }) + '</header>' +
+        '<dl class="ss-meta"><dt>Version</dt><dd><code>' + b.version + '</code></dd>' +
+        '<dt>Author</dt><dd>' + b.author + '</dd></dl>' +
+        '<div class="t-label-sm muted" style="margin-top:var(--space-3)">System prompt</div>' +
+        '<pre class="ss-prompt">' + escape(b.systemPrompt) + '</pre>' +
+        '<div class="t-label-sm muted">Policies</div>' +
+        '<div>' + (b.policies || []).map(p => '<span class="chip chip-accent">' + p + '</span>').join(' ') + '</div>' +
+        '<div class="t-label-sm muted" style="margin-top:var(--space-3)">Tools</div>' +
+        '<div>' + (b.tools || []).map(p => '<span class="chip chip-info">' + p + '</span>').join(' ') + '</div>' +
+      '</section>'
+    );
+  }
+
+  function colManual(s) {
+    const overlays = s.manualOverlays || [];
+    const rows = overlays.length
+      ? overlays.map(o => '<li class="ss-rule"><div class="ss-rule__text">' + o.rule + '</div><div class="t-body-sm muted">' + o.author + ' · ' + o.createdAt + '</div></li>').join('')
+      : '<li class="muted">' + i18n.t('skill.manual_empty') + '</li>';
+    return (
+      '<section class="ss-col">' +
+      '<header class="ss-col__head"><h2 class="t-heading-md">' + i18n.t('skill.col_manual') + '</h2>' +
+        '<span class="chip chip-accent">' + overlays.length + '</span></header>' +
+        '<ul class="ss-rules">' + rows + '</ul>' +
+        '<button class="btn btn-sm btn-primary" data-act="add-rule">＋ ' + i18n.t('skill.add_rule') + '</button>' +
+      '</section>'
+    );
+  }
+
+  function colLearned(s) {
+    const pats = s.learnedPatterns || [];
+    /* [V2-PATCH 2026-04-19] PatternBadge in each row */
+    const rows = pats.length
+      ? pats.map(p => '<li class="ss-learn"><div class="row-between"><div class="ss-rule__text">' + p.pattern + '</div>' + W.patternBadge({ kind: 'learned', count: p.evidenceCount }) + '</div><div class="t-body-sm muted">' + p.firstSeen + ' → ' + p.lastSeen + ' · TTL ' + p.ttlDays + 'd · <span class="chip chip-warning">' + i18n.t('skill.pending_consolidation') + '</span></div></li>').join('')
+      : '<li class="muted">' + i18n.t('skill.learned_empty') + '</li>';
+    return (
+      '<section class="ss-col">' +
+      '<header class="ss-col__head"><h2 class="t-heading-md">' + i18n.t('skill.col_learned') + '</h2>' +
+        '<span class="chip chip-warning">' + pats.length + '</span></header>' +
+        '<ul class="ss-rules">' + rows + '</ul>' +
+        '<div class="t-body-sm muted" style="margin-top:var(--space-3)">' + i18n.t('skill.ttl_label') + ': <strong>90d</strong> (configurable 30-180)</div>' +
+      '</section>'
+    );
+  }
+
+  function goldSection(s) {
+    return (
+      '<section class="ss-gold card">' +
+      '<h3 class="t-heading-md">' + i18n.t('skill.gold_samples') + '</h3>' +
+      '<ul class="ss-rules">' + s.goldSamples.map(g => '<li>★ <strong>' + g.label + '</strong> <span class="muted">· ' + g.createdBy + ' · ' + g.approvedAt + '</span></li>').join('') + '</ul>' +
+      '</section>'
+    );
+  }
+
+  function escape(s) { return String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+  function injectStyles() {
+    if (document.getElementById('ss-styles')) return;
+    const s = document.createElement('style'); s.id = 'ss-styles';
+    s.textContent = `
+.ss-wrap { display:flex; flex-direction:column; gap:var(--space-5); max-width:1400px; }
+.ss-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:var(--space-3); }
+.ss-head h1 { margin:0; }
+.ss-head-actions { display:flex; align-items:center; gap:var(--space-2); }
+.ss-cols { display:grid; grid-template-columns:1fr 1fr 1fr; gap:var(--space-4); }
+@media (max-width: 1100px) { .ss-cols { grid-template-columns:1fr; } }
+.ss-col { background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-lg); padding:var(--space-4); display:flex; flex-direction:column; gap:var(--space-2); }
+.ss-col--base { background:var(--bg-subtle); }
+.ss-col__head { display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-1); }
+.ss-col__head h2 { margin:0; }
+.ss-meta { display:grid; grid-template-columns:auto 1fr; gap:var(--space-1) var(--space-3); margin:0; font-size:12px; }
+.ss-meta dt { color:var(--text-muted); }
+.ss-meta dd { margin:0; }
+.ss-prompt { background:var(--bg-sunken); padding:var(--space-2) var(--space-3); border-radius:var(--radius-sm); font-family:var(--font-mono); font-size:11.5px; max-height:180px; overflow:auto; white-space:pre-wrap; margin:var(--space-1) 0; color:var(--text-secondary); }
+.ss-rules { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:var(--space-2); }
+.ss-rule, .ss-learn { padding:var(--space-2) var(--space-3); background:var(--bg-subtle); border-radius:var(--radius-md); border-left:3px solid var(--stroke-default); }
+.ss-col--base .ss-rule { background:var(--bg-surface); }
+.ss-learn { border-left-color: var(--thermo-warm); }
+.ss-rule__text { font-size:13px; color:var(--text-primary); }
+.ss-gold { padding:var(--space-5); }
+.ss-gold h3 { margin:0 0 var(--space-3) 0; }
+/* [V3-PATCH] sandbox */
+.ss-sandbox { padding:var(--space-4); }
+.ss-sandbox h3 { margin:0; }
+/* [V4-PATCH 2026-04-22] Voice Profile card */
+.ss-voice-profile { padding:var(--space-3) var(--space-4); border-left:3px solid var(--brand-coral); background:var(--accent-primary-soft); }
+.ss-voice-profile h3 { margin:0 0 var(--space-1) 0; }
+.ss-voice-summary { display:flex; gap:var(--space-2); flex-wrap:wrap; margin-top:var(--space-2); }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['skill-studio'] = { mount, meta: { route: '/skills/:id' } };
+})();
+</script>

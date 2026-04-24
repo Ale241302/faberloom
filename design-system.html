@@ -1,0 +1,453 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FaberLoom · Design System</title>
+
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="./core/tokens.css" />
+
+  <style>
+    html, body { margin: 0; padding: 0; background: var(--bg-app); color: var(--text-primary); font-family: var(--font-sans); }
+    .ds-wrap { max-width: 1400px; margin: 0 auto; padding: var(--space-6) var(--space-5); }
+    .ds-hero { padding-bottom: var(--space-5); border-bottom: 1px solid var(--stroke-default); margin-bottom: var(--space-6); }
+    .ds-hero h1 { font-family: var(--font-serif); font-style: italic; font-weight: 400; font-size: 56px; line-height: 1.05; margin: 0 0 var(--space-3) 0; }
+    .ds-hero p { color: var(--text-secondary); max-width: 640px; margin: 0; font-size: 16px; line-height: 1.6; }
+    .ds-nav { display: flex; gap: var(--space-3); flex-wrap: wrap; margin-top: var(--space-4); }
+    .ds-nav a { color: var(--text-secondary); text-decoration: none; font-size: 13px; padding: 4px 10px; border-radius: var(--radius-pill); background: var(--bg-subtle); border: 1px solid var(--stroke-default); }
+    .ds-nav a:hover { color: var(--accent-primary); border-color: var(--accent-primary-soft); }
+
+    .ds-section { margin-bottom: var(--space-8); }
+    .ds-section h2 { font-family: var(--font-serif); font-style: italic; font-weight: 400; font-size: 32px; margin: 0 0 var(--space-2) 0; }
+    .ds-section .ds-lede { color: var(--text-secondary); margin: 0 0 var(--space-5) 0; max-width: 680px; line-height: 1.6; }
+
+    /* Side-by-side light/dark demo */
+    .ds-duo { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-4); }
+    @media (max-width: 960px) { .ds-duo { grid-template-columns: 1fr; } }
+    .ds-frame { border: 1px solid var(--stroke-default); border-radius: var(--radius-lg); overflow: hidden; }
+    .ds-frame-label { padding: var(--space-2) var(--space-3); background: var(--bg-subtle); border-bottom: 1px solid var(--stroke-default); font-size: 12px; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-muted); font-weight: 600; }
+    .ds-frame-body { padding: var(--space-5); background: var(--bg-app); }
+    .ds-frame[data-theme="dark"] { /* scoped dark */ }
+
+    /* Swatches */
+    .ds-swatches { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: var(--space-3); }
+    .ds-swatch { border: 1px solid var(--stroke-default); border-radius: var(--radius-md); overflow: hidden; }
+    .ds-swatch-color { height: 72px; }
+    .ds-swatch-meta { padding: var(--space-2) var(--space-3); background: var(--bg-surface); }
+    .ds-swatch-meta strong { display: block; font-size: 13px; }
+    .ds-swatch-meta code { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+
+    /* Typography demo */
+    .ds-type-row { display: grid; grid-template-columns: 140px 1fr 180px; gap: var(--space-4); align-items: baseline; padding: var(--space-3) 0; border-bottom: 1px solid var(--stroke-default); }
+    .ds-type-row:last-child { border-bottom: none; }
+    .ds-type-row .label { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); }
+    .ds-type-row .specs { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); text-align: right; }
+
+    /* Component grid */
+    .ds-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: var(--space-4); }
+    .ds-card { background: var(--bg-surface); border: 1px solid var(--stroke-default); border-radius: var(--radius-lg); padding: var(--space-4); box-shadow: var(--shadow-sm); }
+    .ds-card h3 { margin: 0 0 var(--space-1) 0; font-size: 14px; font-weight: 600; }
+    .ds-card .caption { font-size: 12px; color: var(--text-muted); margin: 0 0 var(--space-3) 0; }
+    .ds-demo { padding: var(--space-3) 0; border-top: 1px dashed var(--stroke-default); margin-top: var(--space-3); }
+
+    /* Scale showcase */
+    .ds-scale { display: flex; gap: var(--space-2); flex-wrap: wrap; align-items: center; }
+    .ds-scale-item { border: 1px solid var(--stroke-default); border-radius: var(--radius-md); padding: var(--space-2) var(--space-3); background: var(--bg-surface); font-family: var(--font-mono); font-size: 12px; }
+
+    /* Thermometer (widget preview, inlined) */
+    .fl-thermo { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: var(--radius-pill); font-size: 12px; font-weight: 500; font-family: var(--font-mono); border: 1px solid; }
+    .fl-thermo.cold { background: rgba(93, 138, 168, 0.1); color: #5D8AA8; border-color: rgba(93, 138, 168, 0.3); }
+    .fl-thermo.warm { background: rgba(212, 148, 90, 0.12); color: #C77D3F; border-color: rgba(212, 148, 90, 0.35); }
+    .fl-thermo.hot { background: rgba(217, 85, 80, 0.12); color: var(--accent-primary); border-color: rgba(217, 85, 80, 0.35); }
+
+    /* Ladder preview */
+    .fl-ladder { display: flex; gap: 4px; align-items: center; }
+    .fl-ladder-step { width: 18px; height: 4px; background: var(--stroke-default); border-radius: 2px; }
+    .fl-ladder-step.active { background: var(--accent-primary); }
+    .fl-ladder-step.current { background: var(--accent-primary); box-shadow: 0 0 0 2px var(--accent-primary-soft); }
+
+    /* Prov sup preview */
+    .fl-prov-sup { display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 14px; padding: 0 4px; margin-left: 2px; font-family: var(--font-mono); font-size: 9px; font-weight: 600; background: rgba(217, 85, 80, 0.12); color: var(--accent-primary); border-radius: 3px; vertical-align: super; line-height: 1; cursor: pointer; }
+
+    /* Risk badge preview */
+    .fl-risk { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: var(--radius-sm); font-size: 11px; font-weight: 600; font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em; }
+    .fl-risk.low { background: rgba(108, 142, 104, 0.12); color: #5F7C55; border: 1px solid rgba(108, 142, 104, 0.3); }
+    .fl-risk.med { background: rgba(212, 148, 90, 0.12); color: #A86928; border: 1px solid rgba(212, 148, 90, 0.3); }
+    .fl-risk.high { background: rgba(217, 85, 80, 0.12); color: var(--accent-primary); border: 1px solid rgba(217, 85, 80, 0.3); }
+
+    /* Empty state preview */
+    .fl-empty { text-align: center; padding: var(--space-5); }
+    .fl-empty .icon { font-size: 32px; color: var(--text-muted); margin-bottom: var(--space-2); }
+    .fl-empty h4 { margin: 0 0 4px 0; font-size: 14px; }
+    .fl-empty p { margin: 0; font-size: 12px; color: var(--text-muted); }
+
+    /* Skeleton preview */
+    .fl-skel { display: block; height: 12px; background: linear-gradient(90deg, var(--bg-subtle), var(--stroke-default), var(--bg-subtle)); background-size: 200% 100%; border-radius: var(--radius-sm); animation: fl-shim 1.4s ease-in-out infinite; margin-bottom: 8px; }
+    .fl-skel.w-70 { width: 70%; }
+    .fl-skel.w-50 { width: 50%; }
+    @keyframes fl-shim { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+    @media (prefers-reduced-motion: reduce) { .fl-skel { animation: none; } }
+
+    /* Degraded card */
+    .fl-degraded { padding: var(--space-3); background: rgba(212, 148, 90, 0.08); border: 1px dashed #D4945A; border-radius: var(--radius-md); font-size: 12px; }
+    .fl-degraded strong { color: #A86928; }
+
+    /* Theme toggle button (for this page) */
+    .ds-theme-toggle { position: fixed; top: var(--space-4); right: var(--space-4); padding: 6px 14px; background: var(--bg-surface); border: 1px solid var(--stroke-default); border-radius: var(--radius-pill); font-size: 12px; cursor: pointer; color: var(--text-primary); z-index: 10; }
+  </style>
+</head>
+<body>
+  <button class="ds-theme-toggle" id="themeToggle" aria-label="Cambiar tema">◐ Tema</button>
+
+  <div class="ds-wrap">
+    <header class="ds-hero">
+      <h1>FaberLoom Design System</h1>
+      <p>Tokens, tipografía y widgets del control-plane. Paleta editorial-warm adyacente a Claude: coral sobre cream, con dark mode de graphite profundo. Tipografía trivial: Georgia serif itálica para display, Inter para UI, JetBrains Mono para IDs y trazas técnicas.</p>
+      <nav class="ds-nav" aria-label="Secciones del design system">
+        <a href="#colores">Colores</a>
+        <a href="#tipografia">Tipografía</a>
+        <a href="#espaciado">Espaciado</a>
+        <a href="#botones">Botones</a>
+        <a href="#inputs">Inputs</a>
+        <a href="#cards">Cards</a>
+        <a href="#widgets">Widgets</a>
+        <a href="#estados">Estados</a>
+        <a href="./index.html">← Volver a la app</a>
+      </nav>
+    </header>
+
+    <!-- COLORES -->
+    <section class="ds-section" id="colores">
+      <h2>Colores</h2>
+      <p class="ds-lede">Neutrals en cream (light) y graphite (dark). Acento único coral <code>#D95550</code> para marca, acción primaria y provenance. Soportes frios/verdes para estados, reservados.</p>
+      <div class="ds-duo">
+        <div class="ds-frame" data-theme="light">
+          <div class="ds-frame-label">Light mode</div>
+          <div class="ds-frame-body">
+            <div class="ds-swatches" id="sw-light"></div>
+          </div>
+        </div>
+        <div class="ds-frame" data-theme="dark">
+          <div class="ds-frame-label">Dark mode</div>
+          <div class="ds-frame-body">
+            <div class="ds-swatches" id="sw-dark"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- TIPOGRAFÍA -->
+    <section class="ds-section" id="tipografia">
+      <h2>Tipografía</h2>
+      <p class="ds-lede">Escala de 13 niveles. Display en Georgia italic para momentos marca. Heading/body en Inter. Mono en JetBrains para IDs, timestamps y contenido técnico.</p>
+      <div class="ds-type-row">
+        <span class="label">display-lg</span>
+        <span class="t-display-lg">Operá como un CEO</span>
+        <span class="specs">Georgia italic · 56/1.05</span>
+      </div>
+      <div class="ds-type-row">
+        <span class="label">display-md</span>
+        <span class="t-display-md">Bandeja de salida</span>
+        <span class="specs">Georgia italic · 40/1.1</span>
+      </div>
+      <div class="ds-type-row">
+        <span class="label">display-sm</span>
+        <span class="t-display-sm">Cotización Marluvas</span>
+        <span class="specs">Georgia italic · 28/1.2</span>
+      </div>
+      <div class="ds-type-row">
+        <span class="label">heading-lg</span>
+        <span class="t-heading-lg">Agente cotizador</span>
+        <span class="specs">Inter 600 · 24/1.3</span>
+      </div>
+      <div class="ds-type-row">
+        <span class="label">heading-md</span>
+        <span class="t-heading-md">Capas de habilidad</span>
+        <span class="specs">Inter 600 · 18/1.35</span>
+      </div>
+      <div class="ds-type-row">
+        <span class="label">heading-sm</span>
+        <span class="t-heading-sm">Evidencia</span>
+        <span class="specs">Inter 600 · 15/1.4</span>
+      </div>
+      <div class="ds-type-row">
+        <span class="label">body-lg</span>
+        <span class="t-body-lg">Cuerpo del draft: compuesto por tres capas — base sellada, overlay manual y overlay aprendido.</span>
+        <span class="specs">Inter 400 · 16/1.55</span>
+      </div>
+      <div class="ds-type-row">
+        <span class="label">body-md</span>
+        <span class="t-body-md">Cuerpo default para contenido denso: feedback, descripciones, documentación inline.</span>
+        <span class="specs">Inter 400 · 14/1.55</span>
+      </div>
+      <div class="ds-type-row">
+        <span class="label">body-sm</span>
+        <span class="t-body-sm">Secundario, ayudas, metadata blanda.</span>
+        <span class="specs">Inter 400 · 13/1.5</span>
+      </div>
+      <div class="ds-type-row">
+        <span class="label">label-md</span>
+        <span class="t-label-md">AUTONOMÍA</span>
+        <span class="specs">Inter 600 · 12/1.3 · 0.08em</span>
+      </div>
+      <div class="ds-type-row">
+        <span class="label">label-sm</span>
+        <span class="t-label-sm">CONFIANZA</span>
+        <span class="specs">Inter 600 · 11/1.3 · 0.1em</span>
+      </div>
+      <div class="ds-type-row">
+        <span class="label">mono</span>
+        <span class="t-mono">sk_cotizar · v1.3.2 · dr_2026_04_19_001</span>
+        <span class="specs">JetBrains Mono · 12/1.4</span>
+      </div>
+    </section>
+
+    <!-- ESPACIADO -->
+    <section class="ds-section" id="espaciado">
+      <h2>Espaciado</h2>
+      <p class="ds-lede">Escala 4→64. Base 4px, crece en múltiplos que alinean con ritmo vertical del texto.</p>
+      <div class="ds-scale">
+        <div class="ds-scale-item">space-1 · 4</div>
+        <div class="ds-scale-item">space-2 · 8</div>
+        <div class="ds-scale-item">space-3 · 12</div>
+        <div class="ds-scale-item">space-4 · 16</div>
+        <div class="ds-scale-item">space-5 · 24</div>
+        <div class="ds-scale-item">space-6 · 32</div>
+        <div class="ds-scale-item">space-7 · 48</div>
+        <div class="ds-scale-item">space-8 · 64</div>
+      </div>
+    </section>
+
+    <!-- BOTONES -->
+    <section class="ds-section" id="botones">
+      <h2>Botones</h2>
+      <p class="ds-lede">Tres variantes: primary (acento coral), default (neutro), ghost (sin fondo). Tamaños md/sm. Disabled con 40% opacidad, conserva contraste WCAG.</p>
+      <div class="ds-grid">
+        <div class="ds-card">
+          <h3>Primary</h3>
+          <p class="caption">Acción principal por vista. Máximo uno visible.</p>
+          <div class="ds-demo">
+            <button class="btn btn-primary">Aprobar y enviar</button>
+            <button class="btn btn-primary btn-sm" style="margin-left:8px;">Deploy</button>
+          </div>
+        </div>
+        <div class="ds-card">
+          <h3>Default</h3>
+          <p class="caption">Acciones secundarias.</p>
+          <div class="ds-demo">
+            <button class="btn">Editar</button>
+            <button class="btn btn-sm" style="margin-left:8px;">Zoom</button>
+          </div>
+        </div>
+        <div class="ds-card">
+          <h3>Ghost / Danger</h3>
+          <p class="caption">Acciones terciarias o destructivas.</p>
+          <div class="ds-demo">
+            <button class="btn" style="border-color: transparent;">Cancelar</button>
+            <button class="btn" style="color: var(--accent-primary); border-color: rgba(217, 85, 80, 0.35);">Rechazar</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- INPUTS -->
+    <section class="ds-section" id="inputs">
+      <h2>Inputs</h2>
+      <div class="ds-grid">
+        <div class="ds-card">
+          <h3>Text · Number · Select</h3>
+          <p class="caption">Inputs base. Focus con ring coral 2px.</p>
+          <div class="ds-demo" style="display: flex; flex-direction: column; gap: 8px;">
+            <input class="input" type="text" placeholder="Asunto del correo" />
+            <input class="input" type="number" value="8000" />
+            <select class="select">
+              <option>Continuar</option>
+              <option>Abortar</option>
+              <option>Escalar a humano</option>
+            </select>
+          </div>
+        </div>
+        <div class="ds-card">
+          <h3>Chips</h3>
+          <p class="caption">Metadata inline, filtros, taxonomía.</p>
+          <div class="ds-demo">
+            <span class="chip">sk_cotizar</span>
+            <span class="chip" style="background: rgba(217, 85, 80, 0.1); color: var(--accent-primary); border-color: rgba(217, 85, 80, 0.3);">L1</span>
+            <span class="chip">MX</span>
+            <span class="chip">CO</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- CARDS -->
+    <section class="ds-section" id="cards">
+      <h2>Cards</h2>
+      <p class="ds-lede">Superficie base. Radio grande (12px), shadow sutil, 1px stroke. En dark mode el stroke sube su luminosidad para leer bien sobre graphite.</p>
+      <div class="ds-grid">
+        <div class="card" style="padding: var(--space-4);">
+          <div class="t-label-sm" style="color: var(--text-muted);">DRAFT</div>
+          <div class="t-heading-sm" style="margin: 4px 0 8px 0;">Cotización Distribuidora ABC</div>
+          <p class="t-body-sm" style="color: var(--text-secondary); margin: 0;">40 pares Goliath · entrega 15 días · monto USD 8,400</p>
+        </div>
+        <div class="card" style="padding: var(--space-4); border-left: 3px solid var(--accent-primary);">
+          <div class="t-label-sm" style="color: var(--accent-primary);">HOT</div>
+          <div class="t-heading-sm" style="margin: 4px 0 8px 0;">Consolidación pendiente</div>
+          <p class="t-body-sm" style="color: var(--text-secondary); margin: 0;">4 patrones nuevos superan el umbral.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- WIDGETS -->
+    <section class="ds-section" id="widgets">
+      <h2>Widgets FaberLoom</h2>
+      <p class="ds-lede">Componentes específicos del lenguaje del producto: el termómetro de aprendizaje, la escalera de autonomía, el superíndice de procedencia, los badges de riesgo y los estados degradados.</p>
+      <div class="ds-grid">
+
+        <div class="ds-card">
+          <h3>Learning Thermometer</h3>
+          <p class="caption">Tres estados: cold, warm, hot. Pill mono, color-coded.</p>
+          <div class="ds-demo" style="display:flex; gap: 8px; flex-wrap: wrap;">
+            <span class="fl-thermo cold">▲ cold · 2 patrones</span>
+            <span class="fl-thermo warm">▲ warm · 5 patrones</span>
+            <span class="fl-thermo hot">▲ hot · 7 patrones</span>
+          </div>
+        </div>
+
+        <div class="ds-card">
+          <h3>Autonomy Ladder</h3>
+          <p class="caption">L0-L4. Steps progresivos. El actual con halo coral.</p>
+          <div class="ds-demo">
+            <div class="fl-ladder">
+              <span class="fl-ladder-step active"></span>
+              <span class="fl-ladder-step current"></span>
+              <span class="fl-ladder-step"></span>
+              <span class="fl-ladder-step"></span>
+              <span class="fl-ladder-step"></span>
+            </div>
+            <div class="t-body-sm" style="margin-top:8px; color: var(--text-muted);"><strong style="color: var(--text-primary);">L1 · Draft-first</strong> — 67% aprobado en 43 runs · desbloqueo: ≥85% en 50 runs</div>
+          </div>
+        </div>
+
+        <div class="ds-card">
+          <h3>Provenance Sup</h3>
+          <p class="caption">Superíndice que ancla claim → evidence_span → source.</p>
+          <div class="ds-demo">
+            <span class="t-body-md">Precio unitario USD 210<sup class="fl-prov-sup">E1</sup>, entrega en 15 días<sup class="fl-prov-sup">E2</sup>, pago 30 días<sup class="fl-prov-sup">E3</sup>.</span>
+          </div>
+        </div>
+
+        <div class="ds-card">
+          <h3>Action-Risk Badge</h3>
+          <p class="caption">Low / Med / High. Se muestra sobre acciones antes de ejecutar.</p>
+          <div class="ds-demo" style="display:flex; gap: 8px; flex-wrap: wrap;">
+            <span class="fl-risk low">● low</span>
+            <span class="fl-risk med">● med</span>
+            <span class="fl-risk high">● high · &gt; USD 10k</span>
+          </div>
+        </div>
+
+        <div class="ds-card">
+          <h3>Empty State</h3>
+          <p class="caption">Icon, título, subtítulo, CTA opcional.</p>
+          <div class="ds-demo">
+            <div class="fl-empty">
+              <div class="icon">◫</div>
+              <h4>Sin workflows</h4>
+              <p>Cuando armes uno aparecerá acá.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="ds-card">
+          <h3>Skeleton</h3>
+          <p class="caption">Shimmer para loading. Se desactiva con prefers-reduced-motion.</p>
+          <div class="ds-demo">
+            <span class="fl-skel"></span>
+            <span class="fl-skel w-70"></span>
+            <span class="fl-skel w-50"></span>
+          </div>
+        </div>
+
+        <div class="ds-card">
+          <h3>Degraded Card</h3>
+          <p class="caption">Cuando un módulo falla en boot, el shell sigue vivo y renderiza esto en su lugar.</p>
+          <div class="ds-demo">
+            <div class="fl-degraded">
+              <strong>Este módulo no cargó.</strong><br/>
+              El resto de FaberLoom sigue disponible. <a href="#" style="color: var(--accent-primary);">Reintentar</a>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- ESTADOS -->
+    <section class="ds-section" id="estados">
+      <h2>Estados de vista</h2>
+      <p class="ds-lede">Cuatro estados toggleables desde el topbar: <code>loaded</code> (default), <code>empty</code>, <code>loading</code> (skeleton), <code>error</code> (degraded). Se aplican por ruta vía <code>bus.emit('view-state:change', …)</code>.</p>
+      <div class="ds-scale">
+        <div class="ds-scale-item">loaded</div>
+        <div class="ds-scale-item">empty</div>
+        <div class="ds-scale-item">loading</div>
+        <div class="ds-scale-item">error</div>
+      </div>
+    </section>
+  </div>
+
+  <script>
+    // Swatch renderer
+    const swatches = [
+      { key: 'bg-app',          label: 'App background' },
+      { key: 'bg-surface',      label: 'Surface' },
+      { key: 'bg-subtle',       label: 'Subtle' },
+      { key: 'bg-canvas',       label: 'Canvas' },
+      { key: 'text-primary',    label: 'Text primary' },
+      { key: 'text-secondary',  label: 'Text secondary' },
+      { key: 'text-muted',      label: 'Text muted' },
+      { key: 'text-evidence',   label: 'Text evidence' },
+      { key: 'accent-primary',  label: 'Accent primary' },
+      { key: 'accent-primary-soft', label: 'Accent soft' },
+      { key: 'stroke-default',  label: 'Stroke default' },
+      { key: 'stroke-strong',   label: 'Stroke strong' },
+      { key: 'focus-ring',      label: 'Focus ring' },
+    ];
+
+    function renderSwatches(containerId, theme) {
+      const container = document.getElementById(containerId);
+      const probe = document.createElement('div');
+      probe.setAttribute('data-theme', theme);
+      probe.style.display = 'none';
+      document.body.appendChild(probe);
+      const cs = getComputedStyle(probe);
+
+      container.innerHTML = swatches.map(s => {
+        const val = cs.getPropertyValue('--' + s.key).trim() || '—';
+        return `
+          <div class="ds-swatch" data-theme="${theme}" style="background: var(--bg-surface);">
+            <div class="ds-swatch-color" style="background: var(${'--' + s.key});"></div>
+            <div class="ds-swatch-meta" data-theme="${theme}">
+              <strong>${s.label}</strong>
+              <code>--${s.key}</code>
+            </div>
+          </div>
+        `;
+      }).join('');
+      probe.remove();
+    }
+
+    renderSwatches('sw-light', 'light');
+    renderSwatches('sw-dark', 'dark');
+
+    // Theme toggle
+    document.getElementById('themeToggle').addEventListener('click', () => {
+      const cur = document.documentElement.getAttribute('data-theme') || 'light';
+      document.documentElement.setAttribute('data-theme', cur === 'light' ? 'dark' : 'light');
+    });
+  </script>
+</body>
+</html>

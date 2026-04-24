@@ -1,0 +1,252 @@
+<script>
+/* ═══════════════════════════════════════════════════════════════
+   [V3.5-PATCH 2026-04-19] · 19_module_agent_list.html.fragment
+   Lista de agentes + CTA Crear (cierre B1 gap #5 · génesis)
+   ═══════════════════════════════════════════════════════════════ */
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n, bus = FL.bus;
+  let root = null;
+  let state = { filterTier: 'all', filterStatus: 'all' };
+
+  function mount(slot) {
+    root = slot;
+    injectStyles();
+    render();
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  function render() {
+    const t = k => i18n.t(k);
+    const agents = (FL.mock.agents || []).filter(a => {
+      if (state.filterTier !== 'all' && a.tier !== state.filterTier) return false;
+      if (state.filterStatus !== 'all' && (a.lifecycleStatus || 'active') !== state.filterStatus) return false;
+      return true;
+    });
+
+    const tierOpts = ['all','demo-critical','hot','cold','internal','experimental'].map(o => '<option value="' + o + '"' + (state.filterTier === o ? ' selected' : '') + '>' + o + '</option>').join('');
+    const statusOpts = ['all','active','shadow','paused','retired'].map(o => '<option value="' + o + '"' + (state.filterStatus === o ? ' selected' : '') + '>' + o + '</option>').join('');
+
+    const canCreate = FL.session.role === 'owner' || FL.session.role === 'admin';
+
+    root.innerHTML =
+      '<div class="al-wrap">' +
+      '<header class="al-head">' +
+        '<div><h1 class="t-display-md">' + t('nav.agentes') + '</h1>' +
+        '<p class="t-body-md muted">' + agents.length + ' agentes · A4 P1 (AgentSpec / AgentRuntime / AgentMemory) · 7 fields per spec</p></div>' +
+        (canCreate ? '<button class="btn btn-primary" data-act="create">＋ ' + t('agents.create_btn', 'Crear agente') + '</button>' : '<span class="muted t-body-sm">Sin permiso para crear (' + FL.session.role + ')</span>') +
+      '</header>' +
+      '<div class="al-filters card">' +
+        '<label><span class="t-label-sm">Tier</span><select class="select" data-f="filterTier">' + tierOpts + '</select></label>' +
+        '<label><span class="t-label-sm">Estado</span><select class="select" data-f="filterStatus">' + statusOpts + '</select></label>' +
+      '</div>' +
+      (agents.length === 0
+        ? W.emptyState({ title:'Sin agentes con esos filtros', icon:'○' })
+        : '<table class="al-table">' +
+          '<thead><tr>' +
+            /* [V4-PATCH 2026-04-22] Origin column (Sealed/Open) */
+            '<th>Nombre</th><th>Origen</th><th>Spec</th><th>Tier</th><th>Autonomía</th><th>Termómetro</th><th>Runs 7d</th><th>Estado</th><th>Acciones</th>' +
+          '</tr></thead>' +
+          '<tbody>' + agents.map(a => {
+            const statusClass = a.lifecycleStatus === 'active' ? 'chip-success' : a.lifecycleStatus === 'shadow' ? 'chip-info' : a.lifecycleStatus === 'paused' ? 'chip-warning' : '';
+            const therm = a.thermometer && a.thermometer.state ? W.thermometer(a.thermometer.state, a.thermometer.value) : '<span class="muted">—</span>';
+            const sparkD = (FL.mock.availableAgents || []).find(x => x.id === a.id);
+            const spark = sparkD && sparkD.sparklineData ? W.sparkline(sparkD.sparklineData) : '';
+            /* [V4-PATCH 2026-04-22] Sealed/Open badge + Fork-to-Open CTA */
+            const flags = (FL.mock.sealedOpenFlags && FL.mock.sealedOpenFlags.agents && FL.mock.sealedOpenFlags.agents[a.id]) || { origin:'open' };
+            const sealedBadge = W.sealedOpenBadge(flags.origin, { compact:true });
+            const forkCta = flags.origin === 'sealed' ? W.forkToOpenCta(a.id, 'agent') : '';
+            return '<tr data-id="' + a.id + '">' +
+              '<td><a href="#/agentes/' + a.id + '" class="al-name">' + a.name + '</a><div class="t-body-sm muted">' + (a.triggerWord || '—') + ' · <span class="chip" style="font-size:10px;">' + (a.triggerKind || 'word') + '</span></div></td>' +
+              '<td>' + sealedBadge + '</td>' +
+              '<td class="mono"><code>v' + (a.specVersion || '?') + '</code></td>' +
+              '<td><span class="chip">' + (a.tier || '—') + '</span></td>' +
+              '<td><span class="chip" style="background:var(--autonomy-' + (a.autonomy || 'l0').toLowerCase() + ');color:#fff;">' + (a.autonomy || 'L0') + '</span> <span class="muted t-body-sm">/ ceiling ' + (a.autonomyCeiling || 'L1') + '</span></td>' +
+              '<td>' + therm + '</td>' +
+              '<td>' + (sparkD ? sparkD.runsLast7d : 0) + ' ' + spark + '</td>' +
+              '<td><span class="chip ' + statusClass + '">' + (a.lifecycleStatus || 'active') + '</span></td>' +
+              '<td>' +
+                '<a class="btn btn-sm" href="#/agentes/' + a.id + '">Ver</a> ' +
+                (forkCta ? forkCta + ' ' : '') +
+                (canCreate ? '<button class="btn btn-sm" data-act="clone" data-id="' + a.id + '" title="Clonar">⎘</button> ' +
+                             '<button class="btn btn-sm" data-act="lifecycle" data-id="' + a.id + '" title="Lifecycle">⋯</button>' : '') +
+              '</td>' +
+            '</tr>';
+          }).join('') + '</tbody></table>') +
+      '</div>';
+
+    /* wire */
+    root.querySelectorAll('[data-f]').forEach(sel => {
+      sel.addEventListener('change', e => { state[sel.getAttribute('data-f')] = e.target.value; render(); });
+    });
+    const create = root.querySelector('[data-act="create"]');
+    if (create) create.addEventListener('click', () => openCreateWizard());
+    root.querySelectorAll('[data-act="clone"]').forEach(b => {
+      b.addEventListener('click', () => openCloneWizard(b.getAttribute('data-id')));
+    });
+    root.querySelectorAll('[data-act="lifecycle"]').forEach(b => {
+      b.addEventListener('click', () => openLifecycleMenu(b, b.getAttribute('data-id')));
+    });
+    /* [V4-PATCH 2026-04-22] Fork-to-Open wiring */
+    W.wireForkCta && W.wireForkCta(root, (entityId) => {
+      FL.mock.auditEvents && FL.mock.auditEvents.unshift({
+        id:'ae_' + Date.now(), ts:new Date().toISOString(), actorId:FL.session.userId,
+        kind:'agent_fork_to_open', level:'INFO', resourceType:'agent_spec', resourceId:entityId,
+        summary:'Agent ' + entityId + ' forkeado a Open desde lista · reset L0 Shadow · memoria aislada'
+      });
+      render();
+    });
+  }
+
+  function openCreateWizard() {
+    W.openAgentSpecWizard({
+      mode: 'create',
+      onSubmit: spec => {
+        const newId = 'ag_' + (spec.name || 'nuevo').toLowerCase().replace(/[^a-z0-9]+/g, '_').slice(0, 20) + '_' + Date.now().toString(36);
+        const newAgent = Object.assign({}, spec, {
+          id: newId, tenantId: FL.session.tenantId,
+          autonomy: 'L0',
+          state: 'shadow', lifecycleStatus: 'shadow',
+          kpis: { runs30d: 0, approvalRate: 0, avgLatencyMin: 0, failRate: 0, costUSD30d: 0 },
+          memory: { runSession: 0, orgAccount: 0, curated: 0 },
+          thermometer: { value: 0, state: 'cold' },
+          unlockCriterion: 'Pendiente ≥3 runs SHADOW + >70% approval (A4)',
+          specVersion: '1.0.0',
+          specSupersedes: null,
+          createdAt: new Date().toISOString().slice(0, 10),
+          createdBy: FL.session.userId
+        });
+        FL.mock.agents.push(newAgent);
+        FL.mock.agentSpecVersions.push({
+          id: 'asv_' + Date.now(), agentId: newId, specVersion: '1.0.0',
+          publishedAt: new Date().toISOString(), publishedBy: FL.session.userId,
+          supersedes: null, changeNote: 'Initial spec creation via wizard'
+        });
+        FL.mock.auditEvents.unshift({
+          id:'ae_' + Date.now(), ts:new Date().toISOString(), tenantId:FL.session.tenantId,
+          actor:FL.session.userId, action:'agent_spec.created', target:newId,
+          severity:'INFO', ip:'10.0.0.1', userAgent:'FaberLoom/1.0',
+          afterState: JSON.stringify({ name: spec.name, autonomy: 'L0', autonomyCeiling: spec.autonomyCeiling })
+        });
+        bus.emit('toast', { kind:'success', message:'✓ Agente "' + spec.name + '" creado · L0 SHADOW · audit_event agent_spec.created' });
+        render();
+      }
+    });
+  }
+
+  function openCloneWizard(agentId) {
+    const orig = FL.mock.agents.find(a => a.id === agentId);
+    if (!orig) return;
+    W.openAgentSpecWizard({
+      mode: 'clone',
+      initial: Object.assign({}, orig, { id: null }),
+      onSubmit: spec => openCreateWizard.call(null) /* re-route through create flow */
+    });
+  }
+
+  function openLifecycleMenu(btn, agentId) {
+    const a = FL.mock.agents.find(x => x.id === agentId);
+    if (!a) return;
+    const status = a.lifecycleStatus || 'active';
+    const choices = [];
+    if (status === 'active') choices.push({ k:'pause',  label:'⏸ Pausar' });
+    if (status === 'paused' || status === 'shadow') choices.push({ k:'resume', label:'▶ Reactivar' });
+    choices.push({ k:'edit',   label:'✎ Editar AgentSpec' });
+    choices.push({ k:'clone',  label:'⎘ Clonar' });
+    if (status !== 'retired') choices.push({ k:'retire', label:'🗑 Retirar (soft)' });
+
+    /* Render simple inline dropdown next to button */
+    const existing = document.querySelector('.al-lifemenu'); if (existing) existing.remove();
+    const menu = document.createElement('div');
+    menu.className = 'al-lifemenu';
+    menu.style.position = 'absolute';
+    const rect = btn.getBoundingClientRect();
+    menu.style.top = (rect.bottom + window.scrollY + 4) + 'px';
+    menu.style.left = (rect.left + window.scrollX - 100) + 'px';
+    menu.innerHTML = choices.map(c => '<button class="al-lifemenu__item" data-life="' + c.k + '">' + c.label + '</button>').join('');
+    document.body.appendChild(menu);
+    setTimeout(() => {
+      const close = () => { menu.remove(); document.removeEventListener('click', close); };
+      document.addEventListener('click', close);
+    }, 50);
+    menu.querySelectorAll('[data-life]').forEach(it => {
+      it.addEventListener('click', e => {
+        e.stopPropagation();
+        handleLifecycle(it.getAttribute('data-life'), agentId);
+        menu.remove();
+      });
+    });
+  }
+
+  function handleLifecycle(action, agentId) {
+    const a = FL.mock.agents.find(x => x.id === agentId);
+    if (!a) return;
+    if (action === 'pause') { a.lifecycleStatus = 'paused'; logAudit(agentId, 'agent_spec.paused'); bus.emit('toast', { kind:'info', message:'Agente pausado · no genera nuevos drafts' }); render(); return; }
+    if (action === 'resume') { a.lifecycleStatus = 'active'; logAudit(agentId, 'agent_spec.resumed'); bus.emit('toast', { kind:'success', message:'Agente reactivado' }); render(); return; }
+    if (action === 'retire') {
+      if (!confirm('Retirar agente "' + a.name + '"? Soft retire — no se borra, queda con status retired y audit_event registrado.')) return;
+      a.lifecycleStatus = 'retired'; logAudit(agentId, 'agent_spec.retired');
+      bus.emit('toast', { kind:'warn', message:'Agente retirado · audit_event agent_spec.retired registrado' });
+      render(); return;
+    }
+    if (action === 'clone') { openCloneWizard(agentId); return; }
+    if (action === 'edit') {
+      W.openAgentSpecWizard({
+        mode: 'edit', initial: a,
+        onSubmit: spec => {
+          const newVersion = bumpVersion(a.specVersion || '1.0.0');
+          a.specSupersedes = a.specVersion;
+          a.specVersion = newVersion;
+          Object.assign(a, spec);
+          FL.mock.agentSpecVersions.push({
+            id:'asv_' + Date.now(), agentId, specVersion:newVersion,
+            publishedAt:new Date().toISOString(), publishedBy:FL.session.userId,
+            supersedes:a.specSupersedes, changeNote:'Edit via wizard (v' + a.specSupersedes + ' → v' + newVersion + ')'
+          });
+          logAudit(agentId, 'agent_spec.published');
+          bus.emit('toast', { kind:'success', message:'✓ AgentSpec publicada v' + newVersion + ' · supersedes v' + a.specSupersedes });
+          render();
+        }
+      });
+    }
+  }
+
+  function bumpVersion(v) {
+    const parts = String(v).split('.');
+    parts[parts.length - 1] = String(parseInt(parts[parts.length - 1] || '0', 10) + 1);
+    return parts.join('.');
+  }
+
+  function logAudit(agentId, action) {
+    FL.mock.auditEvents.unshift({
+      id:'ae_' + Date.now(), ts:new Date().toISOString(), tenantId:FL.session.tenantId,
+      actor:FL.session.userId, action, target:agentId,
+      severity:'INFO', ip:'10.0.0.1', userAgent:'FaberLoom/1.0'
+    });
+  }
+
+  function injectStyles() {
+    if (document.getElementById('al-styles')) return;
+    const s = document.createElement('style'); s.id = 'al-styles';
+    s.textContent = `
+.al-wrap { display:flex; flex-direction:column; gap:var(--space-4); max-width:1400px; }
+.al-head { display:flex; justify-content:space-between; align-items:flex-end; gap:var(--space-3); flex-wrap:wrap; }
+.al-head h1 { margin:0 0 var(--space-1); }
+.al-filters { display:flex; gap:var(--space-3); padding:var(--space-3); }
+.al-filters label { display:flex; flex-direction:column; gap:var(--space-1); min-width:160px; }
+.al-table { width:100%; border-collapse:collapse; background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-lg); overflow:hidden; font-size:13px; }
+.al-table th, .al-table td { padding:var(--space-2) var(--space-3); text-align:left; border-bottom:1px solid var(--stroke-default); vertical-align:middle; }
+.al-table th { font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); font-weight:600; background:var(--bg-subtle); }
+.al-table tbody tr:hover { background:var(--bg-subtle); }
+.al-name { color:var(--accent-primary); text-decoration:none; font-weight:500; }
+.al-name:hover { text-decoration:underline; }
+.al-lifemenu { background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-md); box-shadow:var(--shadow-float); padding:var(--space-1); z-index:var(--z-dropdown); min-width:180px; }
+.al-lifemenu__item { display:block; width:100%; text-align:left; padding:var(--space-1) var(--space-2); background:transparent; border:0; cursor:pointer; font:inherit; font-size:13px; border-radius:var(--radius-sm); color:var(--text-primary); }
+.al-lifemenu__item:hover { background:var(--bg-subtle); }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['agent-list'] = { mount, meta: { route: '/agentes' } };
+})();
+</script>

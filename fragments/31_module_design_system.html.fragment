@@ -1,0 +1,105 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null;
+
+  function mount(slot) {
+    root = slot; injectStyles(); render();
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  function render() {
+    const tokens = [
+      ['brand-coral','#C96442'],['brand-coral-ink','#A84D30'],['brand-coral-haze','#F2D9CE'],
+      ['brand-evidence','#6E1F2B'],['brand-cream','#F4F1ED'],['brand-ink','#1F1E1C'],
+      ['brand-sage','#7F8C5B'],['brand-amber','#C89A3E'],['brand-sky','#5A7C89'],['brand-lilac','#9A7FA3'],
+      ['autonomy-l0','var(--autonomy-l0)'],['autonomy-l1','var(--autonomy-l1)'],['autonomy-l2','var(--autonomy-l2)'],['autonomy-l3','var(--autonomy-l3)'],['autonomy-l4','var(--autonomy-l4)'],
+      ['thermo-cold','var(--thermo-cold)'],['thermo-warm','var(--thermo-warm)'],['thermo-hot','var(--thermo-hot)']
+    ];
+    const states = ['drafting','awaiting_approval','approved','executing','waiting_external_signal','blocked','completed','failed','escalated','rejected'];
+    const risks = [
+      { actionId: 'send_email_quote', reversibility: 'reversible_24h', min_autonomy: 'L1', required_role: 'operator', audit_class: 'commercial' },
+      { actionId: 'update_crm_stage', reversibility: 'reversible_cost', min_autonomy: 'L2', required_role: 'operator', audit_class: 'operational' },
+      { actionId: 'create_order_sap', reversibility: 'irreversible_cost', min_autonomy: 'L3', required_role: 'admin', audit_class: 'financial' }
+    ];
+
+    root.innerHTML =
+      '<div class="ds-wrap">' +
+      '<header><h1 class="t-display-lg">Design System</h1>' +
+      '<p class="muted">WCAG 2.1 AA · A3 dark palette verified · 15 widgets + 20 tokens</p></header>' +
+
+      '<section><h2>Color tokens</h2>' +
+      '<div class="ds-colors">' + tokens.map(([n, v]) => '<div class="ds-swatch"><div class="ds-swatch__chip" style="background:' + v + ';"></div><code>--' + n + '</code></div>').join('') + '</div></section>' +
+
+      '<section><h2>Typography</h2>' +
+      '<div class="ds-type">' +
+        '<p class="t-display-xl">Display XL</p>' +
+        '<p class="t-display-lg">Display LG (Georgia italic)</p>' +
+        '<p class="t-display-md">Display MD</p>' +
+        '<p class="t-heading-lg">Heading LG</p>' +
+        '<p class="t-body-md">Body MD — Inter 14px</p>' +
+        '<p class="t-label-sm">Label SM · Uppercase</p>' +
+        '<p class="t-mono">mono · JetBrains Mono · L00·sha256:abc</p>' +
+      '</div></section>' +
+
+      '<section><h2>Widgets showcase (15)</h2>' +
+      '<div class="ds-widgets">' +
+        '<div class="ds-w"><h3>1. Thermometer</h3>' + W.thermometer('cold', 0) + ' ' + W.thermometer('warm', 4) + ' ' + W.thermometer('hot', 6) + '</div>' +
+        '<div class="ds-w"><h3>2. AutonomyLadder</h3>' + W.autonomyLadder(1, { unlock: '≥10 runs · ≥80% approval · Tenant Owner approves' }) + '</div>' +
+        '<div class="ds-w"><h3>3. ProvenanceSupport</h3>Stock disponible 48 unidades' + W.provenanceSup('c1', 'e1', 'E1') + ' + plazo 7 días hábiles' + W.provenanceSup('c3', 'e3', 'E3') + '</div>' +
+        '<div class="ds-w"><h3>4. RiskBadge</h3>' + risks.map(r => W.riskBadge(r)).join(' ') + '</div>' +
+        '<div class="ds-w"><h3>5. DraftStateBadge (9 states)</h3><div style="display:flex;flex-wrap:wrap;gap:var(--space-2);">' + states.map(s => W.draftStateBadge(s)).join(' ') + '</div></div>' +
+        '<div class="ds-w"><h3>6. EmptyState</h3>' + W.emptyState({ title: 'Sin drafts pendientes', subtitle: 'Todos procesados — volvé más tarde.', icon: '✓' }) + '</div>' +
+        '<div class="ds-w"><h3>7. LoadingSkeleton</h3>' + W.loadingState() + '</div>' +
+        '<div class="ds-w"><h3>8. DegradedCard (forzado)</h3>' + W.degradedCard('#/demo/forced-error', new Error('Simulación: módulo demo caído')) + '</div>' +
+        '<div class="ds-w"><h3>9. Modal</h3><button class="btn" data-demo="modal">Abrir Modal</button></div>' +
+        '<div class="ds-w"><h3>10. FeedbackModal (5 reasons)</h3><button class="btn btn-primary" data-demo="feedback">Enviar feedback</button></div>' +
+        '<div class="ds-w"><h3>11. ConsolidationModal</h3><button class="btn" data-demo="cons">Abrir consolidación</button></div>' +
+        '<div class="ds-w"><h3>12. Toast</h3><button class="btn" data-demo="toast-s">Success</button> <button class="btn" data-demo="toast-w">Warn</button> <button class="btn" data-demo="toast-e">Error</button></div>' +
+        '<div class="ds-w"><h3>13. Tabs</h3>' + W.tabs([{ id: 'a', label: 'A', panel: '<p>Panel A</p>' }, { id: 'b', label: 'B', panel: '<p>Panel B</p>' }, { id: 'c', label: 'C', panel: '<p>Panel C</p>' }]) + '</div>' +
+        '<div class="ds-w"><h3>14. Diff</h3>' + W.diff('plazo: 5 días hábiles\ntotal: 40000 MXN', 'plazo: 7 días hábiles (política MX)\ntotal: 42380 MXN + IVA 16%') + '</div>' +
+        '<div class="ds-w"><h3>15. Timeline</h3>' + W.timeline([
+          { ts: '09:10', actor: 'system', action: 'trigger:rfq_received', status: 'done' },
+          { ts: '09:11', actor: 'agent', action: 'llm:compose_draft', status: 'done' },
+          { ts: '09:12', actor: 'human', action: 'hitl:awaiting_approval', status: 'active' }
+        ]) + '</div>' +
+      '</div></section>' +
+      '</div>';
+
+    setTimeout(() => W.wireTabs(root.querySelector('[data-widget="tabs"]')), 0);
+
+    root.querySelectorAll('[data-demo]').forEach(b => {
+      b.addEventListener('click', () => {
+        const k = b.getAttribute('data-demo');
+        if (k === 'modal') W.openModal('<h2 id="fl-modal-title" class="t-heading-lg">Modal demo</h2><p>Pulsá Esc para cerrar.</p>', { width: 420 });
+        if (k === 'feedback') W.openFeedbackModal('dr_demo');
+        if (k === 'cons') W.openConsolidationModal(FL.mock.consolidations[0]);
+        if (k === 'toast-s') W.toast({ kind: 'success', message: 'Guardado correctamente' });
+        if (k === 'toast-w') W.toast({ kind: 'warn',    message: 'p95 retrieval fuera de SLO' });
+        if (k === 'toast-e') W.toast({ kind: 'error',   message: 'Conector Postmark desconectado' });
+      });
+    });
+  }
+
+  function injectStyles() {
+    if (document.getElementById('ds-styles')) return;
+    const s = document.createElement('style'); s.id = 'ds-styles';
+    s.textContent = `
+.ds-wrap { display:flex; flex-direction:column; gap:var(--space-6); max-width:1200px; }
+.ds-wrap h1 { margin:0; }
+.ds-wrap h2 { margin:var(--space-3) 0 var(--space-3); border-bottom:1px solid var(--stroke-default); padding-bottom:var(--space-2); }
+.ds-wrap h3 { margin:0 0 var(--space-2); color:var(--text-muted); font-size:13px; letter-spacing:0.04em; text-transform:uppercase; font-weight:600; }
+.ds-colors { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:var(--space-3); }
+.ds-swatch { display:flex; align-items:center; gap:var(--space-2); padding:var(--space-2); background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-md); }
+.ds-swatch__chip { width:24px; height:24px; border-radius:var(--radius-sm); border:1px solid var(--stroke-default); flex-shrink:0; }
+.ds-type p { margin:var(--space-1) 0; }
+.ds-widgets { display:grid; grid-template-columns:repeat(auto-fit, minmax(360px, 1fr)); gap:var(--space-4); }
+.ds-w { padding:var(--space-4); background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-lg); }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['design-system'] = { mount, meta: { route: '/design' } };
+})();
+</script>

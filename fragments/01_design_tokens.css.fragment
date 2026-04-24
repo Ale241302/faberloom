@@ -1,0 +1,395 @@
+/* ============================================================
+   FaberLoom v1 Beta — Design Tokens (SEALED)
+   Light + Dark paritarios. A3 dark palette WCAG AA verified.
+   ============================================================ */
+
+:root {
+  /* ── Brand core (light) ───────────────────────────────── */
+  --brand-coral:        #C96442;
+  --brand-coral-ink:    #A84D30;
+  --brand-coral-haze:   #F2D9CE;
+  --brand-evidence:     #6E1F2B;
+  --brand-cream:        #F4F1ED;
+  --brand-cream-deep:   #EAE6DF;
+  --brand-ink:          #1F1E1C;
+  --brand-ink-soft:     #3A3834;
+  --brand-mist:         #8A857C;
+  --brand-sage:         #7F8C5B;
+  --brand-amber:        #C89A3E;
+  --brand-sky:          #5A7C89;
+  --brand-lilac:        #9A7FA3;
+
+  /* ── Surface — light ──────────────────────────────────── */
+  --bg-canvas:          #FAF8F4;
+  --bg-surface:         #FFFFFF;
+  --bg-subtle:          #F4F1ED;
+  --bg-surface-raised:  #FBF9F5;
+  --bg-sunken:          #EDE8E0;
+  --bg-overlay:         rgba(31, 30, 28, 0.48);
+  --bg-dot-grid:        rgba(31, 30, 28, 0.06);
+
+  /* ── Stroke / border ──────────────────────────────────── */
+  --stroke-default:     #E5DED2;
+  --stroke-strong:      #D4CABB;
+  --stroke-focus:       #C96442;
+  --border-subtle:      rgba(31, 30, 28, 0.08);
+  --border-default:     rgba(31, 30, 28, 0.16);
+  --border-strong:      rgba(31, 30, 28, 0.32);
+  --border-focus:       #C96442;
+
+  /* ── Text ─────────────────────────────────────────────── */
+  --text-primary:       #1F1E1C;
+  --text-secondary:     #4A4742;
+  --text-muted:         #6F6A62;
+  --text-inverse:       #FAF8F4;
+  --text-link:          #A84D30;
+  --text-evidence:      #6E1F2B;
+
+  /* ── Accent ──────────────────────────────────────────── */
+  --accent-primary:         #C96442;
+  --accent-primary-hover:   #B35535;
+  --accent-primary-active:  #9D4528;
+  --accent-primary-soft:    rgba(201, 100, 66, 0.08);
+
+  /* ── Status ──────────────────────────────────────────── */
+  --status-success:     #4A7C4D;
+  --status-warning:     #B57F2E;
+  --status-danger:      #A53D2C;
+  --status-info:        #3F6B8A;
+  --status-neutral:     #6F6A62;
+  --status-success-soft: rgba(74, 124, 77, 0.12);
+  --status-warning-soft: rgba(181, 127, 46, 0.14);
+  --status-danger-soft:  rgba(165, 61, 44, 0.12);
+  --status-info-soft:    rgba(63, 107, 138, 0.12);
+
+  /* ── Draft lifecycle (9-state machine) ───────────────── */
+  --draft-drafting:           #8A857C;   /* mist */
+  --draft-pending:            #C89A3E;   /* amber — awaiting_approval */
+  --draft-approved:           #7F8C5B;   /* sage */
+  --draft-executing:          #5A7C89;   /* sky */
+  --draft-waiting-external:   #9A7FA3;   /* lilac */
+  --draft-blocked:            #6E1F2B;   /* evidence */
+  --draft-completed:          #4A7C4D;   /* deep sage */
+  --draft-failed:             #A53D2C;   /* danger */
+  --draft-escalated:          #6E1F2B;   /* evidence */
+  --draft-rejected:           #A53D2C;
+
+  /* ── Risk semantics (6-field action-risk registry) ───── */
+  --risk-low:           #7F8C5B;   /* sage */
+  --risk-med:           #C89A3E;   /* amber */
+  --risk-high:          #C96442;   /* coral */
+  --risk-irreversible:  #6E1F2B;   /* evidence */
+
+  /* ── Autonomy ladder L0–L4 ───────────────────────────── */
+  --autonomy-l0:        #8A857C;   /* Shadow */
+  --autonomy-l1:        #5A7C89;   /* Propone */
+  --autonomy-l2:        #7F8C5B;   /* Auto-bajo */
+  --autonomy-l3:        #C89A3E;   /* Auto+notif */
+  --autonomy-l4:        #C96442;   /* Auto+excepciones */
+
+  /* ── Learning Thermometer ────────────────────────────── */
+  --thermo-cold:        #5A7C89;   /* 🔵 Frío 0-2 */
+  --thermo-warm:        #C89A3E;   /* 🟡 Tibio 3-5 */
+  --thermo-hot:         #C96442;   /* 🔴 Caliente 6+ */
+
+  /* ── Workflow node colors ────────────────────────────── */
+  --node-trigger:       #7F8C5B;
+  --node-retrieve:      #5A7C89;
+  --node-llm:           #9A7FA3;
+  --node-validator:     #7F8C5B;
+  --node-hitl:          #C89A3E;
+  --node-action:        #C96442;
+  --node-branch:        #8A857C;
+  --node-condition:     #B57F2E;
+  --node-skill:         #6E5494;
+  --node-output:        #3F6B8A;
+  --node-loop:          #8A5A3F;
+
+  /* ── Spacing (8px base with 4px helpers) ─────────────── */
+  --space-0:  0;
+  --space-1:  4px;
+  --space-2:  8px;
+  --space-3:  12px;
+  --space-4:  16px;
+  --space-5:  20px;
+  --space-6:  24px;
+  --space-7:  28px;
+  --space-8:  32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* ── Radius ──────────────────────────────────────────── */
+  --radius-xs:   2px;
+  --radius-sm:   4px;
+  --radius-md:   6px;
+  --radius-lg:   10px;
+  --radius-xl:   16px;
+  --radius-pill: 9999px;
+
+  /* ── Stroke widths ───────────────────────────────────── */
+  --stroke-thin:  1px;
+  --stroke-md:    1.5px;
+  --stroke-thick: 2px;
+
+  /* ── Elevation ──────────────────────────────────────── */
+  --shadow-subtle: 0 1px 2px rgba(31,30,28,0.04), 0 1px 1px rgba(31,30,28,0.03);
+  --shadow-sm:     0 1px 2px rgba(31,30,28,0.06);
+  --shadow-card:   0 2px 8px rgba(31,30,28,0.06), 0 1px 3px rgba(31,30,28,0.04);
+  --shadow-md:     0 4px 12px rgba(31,30,28,0.08);
+  --shadow-float:  0 8px 28px rgba(31,30,28,0.12), 0 2px 6px rgba(31,30,28,0.05);
+  --shadow-lg:     0 12px 32px rgba(31,30,28,0.12);
+  --shadow-overlay:0 24px 64px rgba(31,30,28,0.24);
+  --shadow-focus:  0 0 0 3px rgba(201,100,66,0.28);
+
+  /* ── Motion ──────────────────────────────────────────── */
+  --ease-out:    cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+  --dur-fast:    120ms;
+  --dur-base:    200ms;
+  --dur-slow:    320ms;
+  --dur-page:    420ms;
+
+  /* ── Typography ──────────────────────────────────────── */
+  --font-display: Georgia, 'Times New Roman', serif;
+  --font-ui:      'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-body:    'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono:    'JetBrains Mono', 'SF Mono', Menlo, Consolas, monospace;
+
+  /* ── Layout ─────────────────────────────────────────── */
+  --topbar-h:            56px;
+  --sidebar-w:           240px;
+  --sidebar-w-collapsed: 64px;
+
+  /* ── z-index scale ──────────────────────────────────── */
+  --z-shell:     10;
+  --z-sidebar:   20;
+  --z-topbar:    30;
+  --z-dropdown:  100;
+  --z-overlay:   800;
+  --z-modal:     1000;
+  --z-toast:     2000;
+  --z-tooltip:   3000;
+  --z-livedbg:   9999;
+
+  /* ============================================================
+     [V4-PATCH 2026-04-22] · F1 canonical tokens
+     Fuentes: ENT_PLAT_LLM_ROUTING v2.0 · SPEC_AGENT_COMPOSITION §6 ·
+              SPEC_SKILL_COMPOSITION §sealed/open · DEC-006/007/008
+     ============================================================ */
+
+  /* ── Authority Mode (separate axis from Autonomy Ladder) ── */
+  --auth-signal:            #5A7C89;   /* SEÑALA — info only, no draft */
+  --auth-signal-soft:       rgba(90, 124, 137, 0.12);
+  --auth-propose:           #C89A3E;   /* PROPONE — draft-first, human always */
+  --auth-propose-soft:      rgba(200, 154, 62, 0.14);
+  --auth-exec-approve:      #7F8C5B;   /* EJECUTA CON APROBACION */
+  --auth-exec-approve-soft: rgba(127, 140, 91, 0.12);
+  --auth-exec-solo:         #C96442;   /* EJECUTA SOLO (reserved flows) */
+  --auth-exec-solo-soft:    rgba(201, 100, 66, 0.12);
+
+  /* ── Autonomy Ladder aliases (semantic names per SPEC §5) ── */
+  --ladder-l0:              #8A857C;   /* Shadow · observe only */
+  --ladder-l1:              #5A7C89;   /* Propone · always draft */
+  --ladder-l2:              #7F8C5B;   /* Auto-bajo · pre-approved */
+  --ladder-l3:              #C89A3E;   /* Auto + notif · event-driven */
+  --ladder-l4:              #C96442;   /* Auto + excepciones · reserved */
+
+  /* ── Sealed vs Open (dual mode · SPEC_SKILL_COMP §7) ─────── */
+  --sealed-bg:              rgba(110, 31, 43, 0.06);   /* evidence-tint */
+  --sealed-border:          #6E1F2B;
+  --sealed-ink:             #6E1F2B;
+  --sealed-chip-bg:         rgba(110, 31, 43, 0.14);
+  --open-bg:                rgba(127, 140, 91, 0.06);  /* sage-tint */
+  --open-border:            #7F8C5B;
+  --open-ink:               #4F5938;
+  --open-chip-bg:           rgba(127, 140, 91, 0.14);
+
+  /* ── F2 Roadmap (muted · Coming in F2) ───────────────────── */
+  --fl-muted-bg:            rgba(31, 30, 28, 0.04);
+  --fl-muted-border:        #D4CABB;
+  --fl-muted-ink:           #8A857C;
+  --fl-muted-chip-bg:       rgba(138, 133, 124, 0.14);
+
+  /* ── Circuit Breaker states (Redis-backed · 2-level) ─────── */
+  --cb-closed:              #4A7C4D;   /* ok · green */
+  --cb-closed-soft:         rgba(74, 124, 77, 0.12);
+  --cb-half-open:           #C89A3E;   /* probing · amber */
+  --cb-half-open-soft:      rgba(200, 154, 62, 0.14);
+  --cb-open:                #A53D2C;   /* tripped · red */
+  --cb-open-soft:           rgba(165, 61, 44, 0.14);
+
+  /* ── Pending CEO flag (Q1-Q18 placeholders) ──────────────── */
+  --pending-ceo:            #B57F2E;
+  --pending-ceo-bg:         rgba(181, 127, 46, 0.14);
+  --pending-ceo-border:     #C89A3E;
+}
+
+/* ============================================================
+   Dark mode — A3 verified WCAG AA (paper-under-lamp, warm)
+   ============================================================ */
+
+[data-theme="dark"] {
+  /* Surfaces */
+  --bg-canvas:          #1C1A17;
+  --bg-surface:         #26231F;
+  --bg-surface-raised:  #322E29;
+  --bg-subtle:          #26231F;
+  --bg-sunken:          #141210;
+  --bg-overlay:         rgba(10, 8, 6, 0.72);
+  --bg-dot-grid:        rgba(244, 241, 237, 0.04);
+
+  /* Borders */
+  --border-subtle:      #3A3631;
+  --border-default:     #4A4540;
+  --border-strong:      #6F6A5E;
+  --border-focus:       #E8896A;
+  --stroke-default:     #4A4540;
+  --stroke-strong:      #6F6A5E;
+  --stroke-focus:       #E8896A;
+
+  /* Text */
+  --text-primary:       #F4F1ED;
+  --text-secondary:     #D2CCC1;
+  --text-muted:         #9E988C;
+  --text-inverse:       #1C1A17;
+  --text-link:          #E8896A;
+  --text-evidence:      #E89B8A;
+
+  /* Brand on dark */
+  --brand-coral:        #E8896A;
+  --brand-coral-ink:    #F2A489;
+  --brand-coral-haze:   #4A2E24;
+  --brand-evidence:     #E89B8A;
+  --brand-cream:        #F4F1ED;
+  --brand-cream-deep:   #EAE6DF;
+  --brand-ink:          #141210;
+  --brand-ink-soft:     #26231F;
+  --brand-mist:         #9E988C;
+  --brand-sage:         #B8C585;
+  --brand-amber:        #E8C274;
+  --brand-sky:          #8FB4C4;
+  --brand-lilac:        #C4ACD0;
+
+  /* Accent */
+  --accent-primary:         #E8896A;
+  --accent-primary-hover:   #F2A489;
+  --accent-primary-active:  #F5B8A0;
+  --accent-primary-soft:    rgba(232, 137, 106, 0.14);
+
+  /* Status */
+  --status-success:     #B8C585;
+  --status-warning:     #E8C274;
+  --status-danger:      #E89B8A;
+  --status-info:        #8FB4C4;
+  --status-neutral:     #9E988C;
+  --status-success-soft: rgba(184, 197, 133, 0.14);
+  --status-warning-soft: rgba(232, 194, 116, 0.16);
+  --status-danger-soft:  rgba(232, 155, 138, 0.14);
+  --status-info-soft:    rgba(143, 180, 196, 0.14);
+
+  /* Draft lifecycle (dark) */
+  --draft-drafting:           #9E988C;
+  --draft-pending:            #E8C274;
+  --draft-approved:           #B8C585;
+  --draft-executing:          #8FB4C4;
+  --draft-waiting-external:   #C4ACD0;
+  --draft-blocked:            #E89B8A;
+  --draft-completed:          #B8C585;
+  --draft-failed:             #E89B8A;
+  --draft-escalated:          #E89B8A;
+  --draft-rejected:           #E89B8A;
+
+  /* Risk (dark) */
+  --risk-low:           #B8C585;
+  --risk-med:           #E8C274;
+  --risk-high:          #E8896A;
+  --risk-irreversible:  #E89B8A;
+
+  /* Autonomy L0–L4 (dark) */
+  --autonomy-l0:        #9E988C;
+  --autonomy-l1:        #8FB4C4;
+  --autonomy-l2:        #B8C585;
+  --autonomy-l3:        #E8C274;
+  --autonomy-l4:        #E8896A;
+
+  /* Thermometer (dark) */
+  --thermo-cold:        #8FB4C4;
+  --thermo-warm:        #E8C274;
+  --thermo-hot:         #E89B8A;
+
+  /* Node colors (dark) */
+  --node-trigger:       #B8C585;
+  --node-retrieve:      #8FB4C4;
+  --node-llm:           #C4ACD0;
+  --node-validator:     #B8C585;
+  --node-hitl:          #E8C274;
+  --node-action:        #E8896A;
+  --node-branch:        #9E988C;
+  --node-condition:     #E8C274;
+  --node-skill:         #C4ACD0;
+  --node-output:        #8FB4C4;
+  --node-loop:          #D4A98A;
+
+  /* Shadows (dark) */
+  --shadow-subtle:  0 1px 0 rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.02);
+  --shadow-sm:      0 1px 2px rgba(0,0,0,0.3);
+  --shadow-card:    0 4px 12px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.03);
+  --shadow-md:      0 4px 12px rgba(0,0,0,0.4);
+  --shadow-float:   0 16px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.04);
+  --shadow-lg:      0 12px 32px rgba(0,0,0,0.5);
+  --shadow-overlay: 0 24px 64px rgba(0,0,0,0.7);
+  --shadow-focus:   0 0 0 3px rgba(232,137,106,0.45);
+
+  /* ============================================================
+     [V4-PATCH 2026-04-22] · F1 tokens — dark overrides
+     ============================================================ */
+
+  /* Authority Mode (dark) */
+  --auth-signal:            #8FB4C4;
+  --auth-signal-soft:       rgba(143, 180, 196, 0.14);
+  --auth-propose:           #E8C274;
+  --auth-propose-soft:      rgba(232, 194, 116, 0.16);
+  --auth-exec-approve:      #B8C585;
+  --auth-exec-approve-soft: rgba(184, 197, 133, 0.14);
+  --auth-exec-solo:         #E8896A;
+  --auth-exec-solo-soft:    rgba(232, 137, 106, 0.14);
+
+  /* Ladder aliases (dark) */
+  --ladder-l0:              #9E988C;
+  --ladder-l1:              #8FB4C4;
+  --ladder-l2:              #B8C585;
+  --ladder-l3:              #E8C274;
+  --ladder-l4:              #E8896A;
+
+  /* Sealed vs Open (dark) */
+  --sealed-bg:              rgba(232, 155, 138, 0.09);
+  --sealed-border:          #E89B8A;
+  --sealed-ink:             #F2B5A6;
+  --sealed-chip-bg:         rgba(232, 155, 138, 0.16);
+  --open-bg:                rgba(184, 197, 133, 0.09);
+  --open-border:            #B8C585;
+  --open-ink:               #D3DEA8;
+  --open-chip-bg:           rgba(184, 197, 133, 0.16);
+
+  /* F2 Roadmap muted (dark) */
+  --fl-muted-bg:            rgba(244, 241, 237, 0.04);
+  --fl-muted-border:        #4A4540;
+  --fl-muted-ink:           #9E988C;
+  --fl-muted-chip-bg:       rgba(158, 152, 140, 0.16);
+
+  /* Circuit Breaker (dark) */
+  --cb-closed:              #B8C585;
+  --cb-closed-soft:         rgba(184, 197, 133, 0.14);
+  --cb-half-open:           #E8C274;
+  --cb-half-open-soft:      rgba(232, 194, 116, 0.16);
+  --cb-open:                #E89B8A;
+  --cb-open-soft:           rgba(232, 155, 138, 0.14);
+
+  /* Pending CEO (dark) */
+  --pending-ceo:            #E8C274;
+  --pending-ceo-bg:         rgba(232, 194, 116, 0.16);
+  --pending-ceo-border:     #E8C274;
+}

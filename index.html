@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="es" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="FaberLoom — control-plane de agentes de IA para operaciones B2B en LatAm" />
+  <title>FaberLoom · Control-plane de agentes</title>
+
+  <!-- Preconnect -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+  <!-- Fonts: Inter (UI) + JetBrains Mono (IDs) + Georgia is system stack -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <!-- Design tokens -->
+  <link rel="stylesheet" href="./core/tokens.css" />
+
+  <!-- No-flash theme bootstrap -->
+  <script>
+    (function () {
+      try {
+        const saved = localStorage.getItem('faberloom.v1.theme');
+        if (saved === 'dark' || saved === 'light') {
+          document.documentElement.setAttribute('data-theme', saved);
+        } else if (window.matchMedia('(prefers-color-scheme: dark)').matches) {
+          document.documentElement.setAttribute('data-theme', 'dark');
+        }
+      } catch (e) { /* noop */ }
+    })();
+  </script>
+
+  <style>
+    html, body { margin: 0; padding: 0; height: 100%; }
+    body {
+      font-family: var(--font-sans);
+      background: var(--bg-app);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
+      -moz-osx-font-smoothing: grayscale;
+    }
+    /* Pre-boot splash (removed once boot runs) */
+    #fl-splash {
+      position: fixed; inset: 0;
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg-app);
+      color: var(--text-muted);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      z-index: 9999;
+      transition: opacity 200ms ease;
+    }
+    #fl-splash.done { opacity: 0; pointer-events: none; }
+    #fl-splash .dot {
+      display: inline-block; width: 8px; height: 8px;
+      border-radius: 50%; background: var(--accent-primary);
+      margin-right: 10px;
+      animation: fl-pulse 1.2s ease-in-out infinite;
+    }
+    @keyframes fl-pulse {
+      0%, 100% { opacity: 0.3; transform: scale(0.9); }
+      50% { opacity: 1; transform: scale(1.1); }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      #fl-splash .dot { animation: none; }
+    }
+
+    /* Skip-link */
+    .fl-skip-link {
+      position: absolute;
+      top: -40px; left: var(--space-3);
+      padding: var(--space-2) var(--space-3);
+      background: var(--accent-primary);
+      color: #fff;
+      border-radius: var(--radius-md);
+      font-weight: 600;
+      z-index: 10000;
+      transition: top 120ms;
+    }
+    .fl-skip-link:focus { top: var(--space-3); outline: 2px solid var(--focus-ring); outline-offset: 2px; }
+  </style>
+</head>
+<body>
+  <a href="#main-content" class="fl-skip-link">Saltar al contenido</a>
+
+  <!-- App root — shell.js monta topbar + sidebar + <main id="main-content"> -->
+  <div id="fl-root"></div>
+
+  <!-- Live region para anuncios a11y (boot.js escribe acá) -->
+  <div id="fl-live" role="status" aria-live="polite" aria-atomic="true" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;border:0;"></div>
+
+  <!-- Splash mientras carga el bundle ESM -->
+  <div id="fl-splash"><span class="dot" aria-hidden="true"></span>FaberLoom · cargando…</div>
+
+  <!-- Bootstrap modular -->
+  <script type="module">
+    import { boot } from './core/boot.js';
+
+    boot({ rootId: 'fl-root' })
+      .then(() => {
+        const splash = document.getElementById('fl-splash');
+        if (splash) {
+          splash.classList.add('done');
+          setTimeout(() => splash.remove(), 300);
+        }
+      })
+      .catch((err) => {
+        console.error('[faberloom] boot failed', err);
+        const splash = document.getElementById('fl-splash');
+        if (splash) {
+          splash.innerHTML = `
+            <div style="max-width: 480px; text-align: center;">
+              <strong style="color: var(--text-primary); display: block; margin-bottom: 8px;">No pudimos iniciar FaberLoom</strong>
+              <span style="color: var(--text-muted); font-size: 13px;">Revisá la consola del navegador. Probablemente necesitás servir por HTTP: <code>python -m http.server 8000</code></span>
+            </div>
+          `;
+        }
+      });
+  </script>
+
+  <!-- Fallback para navegadores sin ESM -->
+  <script nomodule>
+    document.getElementById('fl-splash').innerHTML =
+      '<div style="text-align:center;max-width:420px;"><strong>Navegador no soportado</strong><br/><span style="color:var(--text-muted);font-size:13px;">FaberLoom requiere un navegador con soporte de ES Modules (Chrome 61+, Firefox 60+, Safari 11+).</span></div>';
+  </script>
+</body>
+</html>

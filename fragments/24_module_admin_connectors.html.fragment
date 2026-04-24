@@ -1,0 +1,142 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null, filter = 'all';
+
+  function mount(slot) {
+    root = slot; injectStyles();
+    if (FL.session.role === 'operator') {
+      root.innerHTML = W.degradedCard('admin-connectors', new Error('Sin permisos'));
+      return { unmount: () => { if (root) root.innerHTML = ''; } };
+    }
+    render();
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  function render() {
+    const t = k => i18n.t(k);
+    const cxs = FL.mock.connectors.filter(c => filter === 'all' || c.status === filter);
+    root.innerHTML =
+      '<div class="cx-wrap">' +
+      '<header><h1 class="t-display-md">' + t('admin.connectors_title') + '</h1></header>' +
+      '<div class="cx-filters">' +
+        ['all','connected','disconnected','planned'].map(f => (
+          '<button class="btn btn-sm ' + (filter === f ? 'btn-primary' : '') + '" data-f="' + f + '">' + f + '</button>'
+        )).join(' ') +
+      '</div>' +
+      '<div class="cx-grid">' +
+        cxs.map(c => (
+          '<article class="cx-card">' +
+            '<header class="cx-card__head">' +
+              '<strong>' + c.name + '</strong>' +
+              '<span class="chip ' + chipCls(c.status) + '">' + t('admin.connector_' + c.status) + '</span>' +
+            '</header>' +
+            '<div class="t-body-sm muted">kind · <code>' + c.kind + '</code>' + (c.scope ? ' · scope <code>' + c.scope + '</code>' : '') + '</div>' +
+            (c.configuredAt ? '<div class="t-body-sm muted">configurado · ' + c.configuredAt + '</div>' : '') +
+            /* [V2-PATCH 2026-04-19] wire configure button */
+            '<footer><button class="btn btn-sm" data-configure="' + c.id + '" ' + (c.status === 'planned' ? 'disabled' : '') + '>' + (c.status === 'connected' ? 'Configurar' : 'Conectar') + '</button></footer>' +
+          '</article>'
+        )).join('') +
+      '</div>' +
+      '</div>';
+
+    root.querySelectorAll('[data-f]').forEach(b => {
+      b.addEventListener('click', () => { filter = b.getAttribute('data-f'); render(); });
+    });
+    /* [V2-PATCH 2026-04-19] wire config modal */
+    root.querySelectorAll('[data-configure]').forEach(b => {
+      b.addEventListener('click', () => openConfigModal(b.getAttribute('data-configure')));
+    });
+  }
+
+  /* [V2-PATCH 2026-04-19] 3-tab config modal */
+  function openConfigModal(connId) {
+    const c = FL.mock.connectors.find(x => x.id === connId);
+    if (!c) return;
+    const t = k => i18n.t(k);
+
+    const credsPanel = (
+      '<div class="cx-cfg"><label><span class="t-label-sm">Endpoint URL</span><input class="input" value="https://api.' + c.kind + '.example/v1"/></label>' +
+      '<label><span class="t-label-sm">API Key</span><input class="input" type="password" placeholder="sk-•••"/></label>' +
+      '<p class="t-body-sm muted">Las credenciales se guardan encriptadas (KEK via envelope). A5 §1.9 controles anti-Admin-dios.</p></div>'
+    );
+    const scopePanel = (
+      '<div class="cx-cfg"><label><span class="t-label-sm">Tenant</span><input class="input" value="' + FL.session.tenantId + '" readonly/></label>' +
+      '<label><span class="t-label-sm">Departamentos autorizados</span><select class="select" multiple size="3">' +
+        FL.mock.departments.map(d => '<option value="' + d.id + '">' + d.name + '</option>').join('') +
+      '</select></label>' +
+      '<label><span class="t-label-sm">Scope retrieval default</span><select class="select">' +
+        '<option>org</option><option>dept</option></select></label></div>'
+    );
+    const testPanel = (
+      '<div class="cx-cfg"><p>' + t('connector.test_run') + ':</p>' +
+      '<button class="btn btn-primary" data-cx-test>▶ Run test</button>' +
+      '<div id="cx-test-result" class="t-body-sm muted" style="margin-top:var(--space-3);">— Sin ejecutar —</div></div>'
+    );
+    const tabs = W.tabs([
+      { id: 'creds', label: t('connector.cfg_tab_creds'), panel: credsPanel },
+      { id: 'scope', label: t('connector.cfg_tab_scope'), panel: scopePanel },
+      { id: 'test',  label: t('connector.cfg_tab_test'),  panel: testPanel }
+    ]);
+
+    W.openModal(
+      '<h2 id="fl-modal-title" class="t-heading-lg" style="margin:0 0 var(--space-3);">' + c.name + ' · configuración</h2>' +
+      tabs +
+      '<div style="display:flex;gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-4);border-top:1px solid var(--stroke-default);padding-top:var(--space-3);">' +
+        '<button class="btn" data-cx-act="cancel">' + t('common.cancel') + '</button>' +
+        '<button class="btn btn-primary" data-cx-act="save">' + t('common.save') + '</button>' +
+      '</div>',
+      { width: 640 }
+    );
+
+    setTimeout(() => {
+      W.wireTabs(document.querySelector('[data-widget="tabs"]'));
+      document.querySelector('[data-cx-act="cancel"]').addEventListener('click', () => W.closeModal());
+      document.querySelector('[data-cx-act="save"]').addEventListener('click', () => {
+        c.status = 'connected';
+        c.configuredAt = new Date().toISOString().slice(0, 10);
+        FL.mock.auditEvents.unshift({
+          id: 'ae_' + Date.now(), ts: new Date().toISOString(), tenantId: FL.session.tenantId,
+          actor: FL.session.userId, action: 'connector.enabled', target: c.id,
+          severity: 'INFO', ip: '10.0.0.1', userAgent: 'FaberLoom/1.0'
+        });
+        W.closeModal();
+        FL.bus.emit('toast', { kind: 'success', message: 'Conector ' + c.name + ' configurado · audit event registrado' });
+        render();
+      });
+      const testBtn = document.querySelector('[data-cx-test]');
+      if (testBtn) testBtn.addEventListener('click', () => {
+        const res = document.getElementById('cx-test-result');
+        res.textContent = '⏳ Testing…';
+        setTimeout(() => {
+          const ms = 600 + Math.floor(Math.random() * 400);
+          res.textContent = '✓ ' + t('connector.test_ok').replace('{ms}', ms);
+          res.style.color = 'var(--status-success)';
+        }, 800);
+      });
+    }, 50);
+  }
+
+  function chipCls(s) { return s === 'connected' ? 'chip-success' : s === 'disconnected' ? 'chip-warning' : ''; }
+
+  function injectStyles() {
+    if (document.getElementById('cx-styles')) return;
+    const s = document.createElement('style'); s.id = 'cx-styles';
+    s.textContent = `
+.cx-wrap { display:flex; flex-direction:column; gap:var(--space-4); }
+.cx-wrap h1 { margin:0; }
+.cx-filters { display:flex; gap:var(--space-2); flex-wrap:wrap; }
+.cx-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr)); gap:var(--space-3); }
+.cx-card { padding:var(--space-4); background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-lg); display:flex; flex-direction:column; gap:var(--space-2); }
+.cx-card__head { display:flex; justify-content:space-between; align-items:center; }
+/* [V2-PATCH 2026-04-19] config modal */
+.cx-cfg { display:flex; flex-direction:column; gap:var(--space-3); }
+.cx-cfg label { display:flex; flex-direction:column; gap:var(--space-1); }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['admin-connectors'] = { mount, meta: { route: '/admin/conectores' } };
+})();
+</script>

@@ -1,0 +1,106 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null, state = { sev: 'all', actor: 'all', action: '', page: 0 };
+  const PAGE_SIZE = 20;
+
+  function mount(slot) {
+    root = slot; injectStyles();
+    if (FL.session.role === 'operator') {
+      root.innerHTML = W.degradedCard('admin-audit', new Error('Sin permisos'));
+      return { unmount: () => { if (root) root.innerHTML = ''; } };
+    }
+    render();
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  function filtered() {
+    return FL.mock.auditEvents.filter(e => {
+      if (state.sev !== 'all' && e.severity !== state.sev) return false;
+      if (state.actor !== 'all' && e.actor !== state.actor) return false;
+      if (state.action && !e.action.includes(state.action)) return false;
+      return true;
+    });
+  }
+
+  function render() {
+    const t = k => i18n.t(k);
+    const events = filtered();
+    const pageEvents = events.slice(state.page * PAGE_SIZE, (state.page + 1) * PAGE_SIZE);
+    const actors = ['all'].concat(Array.from(new Set(FL.mock.auditEvents.map(e => e.actor))));
+    const sevOpts = ['all','INFO','WARN','ERROR','POLICY'];
+
+    root.innerHTML =
+      '<div class="aa-wrap">' +
+      '<header class="aa-head"><h1 class="t-display-md">' + t('admin.audit_title') + '</h1>' +
+      '<button class="btn" data-act="export">⬇ ' + t('admin.audit_export') + '</button></header>' +
+      '<div class="aa-filters card">' +
+        '<label><span class="t-label-sm">Severity</span><select class="select" data-f="sev">' + sevOpts.map(s => '<option value="' + s + '">' + s + '</option>').join('') + '</select></label>' +
+        '<label><span class="t-label-sm">Actor</span><select class="select" data-f="actor">' + actors.map(a => '<option value="' + a + '">' + a + '</option>').join('') + '</select></label>' +
+        '<label><span class="t-label-sm">Action contains</span><input class="input" data-f="action" placeholder="draft.*"/></label>' +
+      '</div>' +
+      '<table class="aa-table">' +
+        '<thead><tr><th>' + t('admin.audit_col_ts') + '</th><th>' + t('admin.audit_col_actor') + '</th><th>' + t('admin.audit_col_action') + '</th><th>' + t('admin.audit_col_target') + '</th><th>' + t('admin.audit_col_sev') + '</th><th>ip</th></tr></thead>' +
+        '<tbody>' + pageEvents.map(e => (
+          '<tr><td class="mono muted">' + e.ts.slice(0, 19).replace('T', ' ') + '</td>' +
+          '<td>' + e.actor + '</td>' +
+          '<td><code>' + e.action + '</code></td>' +
+          '<td class="muted">' + (e.target || '—') + '</td>' +
+          '<td>' + sevChip(e.severity) + '</td>' +
+          '<td class="mono muted">' + e.ip + '</td></tr>'
+        )).join('') + '</tbody>' +
+      '</table>' +
+      '<div class="rt-pager"><button class="btn btn-sm" ' + (state.page === 0 ? 'disabled' : '') + ' data-p="prev">« Previo</button>' +
+      '<span class="muted">' + events.length + ' eventos · página ' + (state.page + 1) + '</span>' +
+      '<button class="btn btn-sm" ' + ((state.page + 1) * PAGE_SIZE >= events.length ? 'disabled' : '') + ' data-p="next">Siguiente »</button></div>' +
+      '</div>';
+
+    root.querySelectorAll('[data-f]').forEach(el => {
+      el.value = state[el.getAttribute('data-f')] || '';
+      el.addEventListener(el.tagName === 'INPUT' ? 'input' : 'change', ev => {
+        state[el.getAttribute('data-f')] = ev.target.value; state.page = 0; render();
+      });
+    });
+    const pv = root.querySelector('[data-p="prev"]'), nx = root.querySelector('[data-p="next"]');
+    if (pv) pv.addEventListener('click', () => { if (state.page > 0) { state.page--; render(); } });
+    if (nx) nx.addEventListener('click', () => { if ((state.page + 1) * PAGE_SIZE < events.length) { state.page++; render(); } });
+    const ex = root.querySelector('[data-act="export"]');
+    if (ex) ex.addEventListener('click', exportCsv);
+  }
+
+  function sevChip(s) {
+    const cls = s === 'ERROR' || s === 'POLICY' ? 'chip-danger' : s === 'WARN' ? 'chip-warning' : 'chip';
+    return '<span class="chip ' + cls + '">' + s + '</span>';
+  }
+
+  function exportCsv() {
+    const rows = [['ts','actor','action','target','severity','ip']].concat(filtered().map(e => [e.ts, e.actor, e.action, e.target || '', e.severity, e.ip]));
+    const csv = rows.map(r => r.map(c => '"' + String(c).replace(/"/g, '""') + '"').join(',')).join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url; a.download = 'audit_' + new Date().toISOString().slice(0, 10) + '.csv';
+    a.click(); URL.revokeObjectURL(url);
+    FL.bus.emit('toast', { kind: 'success', message: 'CSV exportado' });
+  }
+
+  function injectStyles() {
+    if (document.getElementById('aa-styles')) return;
+    const s = document.createElement('style'); s.id = 'aa-styles';
+    s.textContent = `
+.aa-wrap { display:flex; flex-direction:column; gap:var(--space-3); }
+.aa-head { display:flex; justify-content:space-between; align-items:center; gap:var(--space-3); flex-wrap:wrap; }
+.aa-head h1 { margin:0; }
+.aa-filters { display:flex; gap:var(--space-3); flex-wrap:wrap; padding:var(--space-3); }
+.aa-filters label { display:flex; flex-direction:column; gap:var(--space-1); min-width:160px; }
+.aa-table { width:100%; border-collapse:collapse; background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-lg); overflow:hidden; font-size:12px; }
+.aa-table th, .aa-table td { padding:var(--space-2) var(--space-3); text-align:left; border-bottom:1px solid var(--stroke-default); }
+.aa-table th { font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); font-weight:600; background:var(--bg-subtle); }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['admin-audit'] = { mount, meta: { route: '/admin/auditoria' } };
+})();
+</script>

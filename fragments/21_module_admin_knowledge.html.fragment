@@ -1,0 +1,206 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null, selectedScope = 'global';
+
+  const SCOPES = [
+    { id: 'global', label: 'Global',       note: 'FaberLoom base sealed' },
+    { id: 'org',    label: 'Organización', note: 'admin org sube' },
+    { id: 'dept',   label: 'Departamento', note: 'admin depto sube o hereda' },
+    { id: 'user',   label: 'Usuario',      note: 'usuario autoría + sistema aprende · private-by-default' }
+  ];
+
+  const CHUNKS_BY_SCOPE = {
+    global: [
+      { id: 'mc_g1', content: 'Política comercial base MWT / Rana Walk', status: 'active',     classification: 'public' },
+      { id: 'mc_g2', content: 'Glosario ASTM F2413 composite vs steel toe', status: 'active', classification: 'public' }
+    ],
+    org: [
+      { id: 'mc_o1', content: 'Margen mínimo cotización B2B = 32%',             status: 'active', classification: 'internal' },
+      { id: 'mc_o2', content: 'Marluvas stock priority sobre Tecmater',          status: 'active', classification: 'partner_b2b' },
+      { id: 'mc_o3', content: 'IVA MX 16% + retención ISR umbral 50k',           status: 'active', classification: 'internal' },
+      { id: 'mc_o4', content: '(superseded) Descuento 15% default',              status: 'superseded', classification: 'internal' }
+    ],
+    dept: [
+      { id: 'mc_d1', content: 'Ventas MX: plazo default 7 días hábiles',        status: 'active', classification: 'internal', dept: 'd_ventas' },
+      { id: 'mc_d2', content: 'Compras: escalación si monto > 500k USD',        status: 'active', classification: 'internal', dept: 'd_compras' }
+    ],
+    user: [
+      { id: 'mc_u1', content: 'Álvaro · preferencia tono telegráfico en follow-ups', status: 'active', classification: 'internal', owner: 'u_alvaro' }
+    ]
+  };
+
+  function mount(slot) {
+    root = slot; injectStyles();
+    if (FL.session.role === 'operator') {
+      root.innerHTML = W.degradedCard('admin-knowledge', new Error('Sin permisos'));
+      return { unmount: () => { if (root) root.innerHTML = ''; } };
+    }
+    render();
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  function render() {
+    const t = k => i18n.t(k);
+    const chunks = CHUNKS_BY_SCOPE[selectedScope] || [];
+    const canPromote = FL.session.role !== 'operator';
+    root.innerHTML =
+      '<div class="ak-wrap">' +
+      '<header><h1 class="t-display-md">' + t('admin.knowledge_title') + '</h1>' +
+      '<p class="muted t-body-sm">' + t('admin.private_by_default') + ' · promotions requieren <code>can_approve_promotion</code></p></header>' +
+      '<div class="ak-layout">' +
+        '<aside class="ak-tree card">' +
+        SCOPES.map(s => (
+          '<button class="ak-tree__row ' + (selectedScope === s.id ? 'ak-tree__row--active' : '') + '" data-scope="' + s.id + '">' +
+          '<div class="t-heading-sm">' + s.label + '</div>' +
+          '<div class="t-body-sm muted">' + s.note + '</div>' +
+          '<div class="chip chip-info">' + (CHUNKS_BY_SCOPE[s.id] || []).length + ' chunks</div>' +
+          '</button>'
+        )).join('') +
+        '</aside>' +
+        '<section class="ak-panel card">' +
+        '<header class="row-between"><h3>' + t('admin.knowledge_scope_' + selectedScope) + '</h3>' +
+        /* [V2-PATCH 2026-04-19] wire promote button */
+        (canPromote ? '<button class="btn btn-sm btn-primary" data-promote>↑ ' + t('admin.knowledge_promote') + '</button>' : '') +
+        '</header>' +
+        '<ul class="ak-chunks">' +
+        (chunks.length
+          ? chunks.map(c => (
+            '<li class="ak-chunk">' +
+            '<div class="ak-chunk__body"><strong>' + c.content + '</strong>' +
+            '<div class="t-body-sm muted">id ' + c.id + ' · ' + c.classification + (c.status !== 'active' ? ' · <span class="chip chip-warning">' + c.status + '</span>' : '') + '</div></div>' +
+            '</li>'
+          )).join('')
+          : '<li class="muted">Sin chunks (o requiere break-glass)</li>') +
+        '</ul>' +
+        '</section>' +
+      '</div>' +
+      '</div>';
+
+    root.querySelectorAll('[data-scope]').forEach(b => {
+      b.addEventListener('click', () => { selectedScope = b.getAttribute('data-scope'); render(); });
+    });
+    /* [V2-PATCH 2026-04-19] wire promote modal */
+    const promoteBtn = root.querySelector('[data-promote]');
+    if (promoteBtn) promoteBtn.addEventListener('click', () => openPromoteModal());
+  }
+
+  /* [V2-PATCH 2026-04-19] 3-step promote flow */
+  function openPromoteModal() {
+    let step = 1;
+    const chunks = CHUNKS_BY_SCOPE[selectedScope] || [];
+    const chunk = chunks.find(c => c.status === 'active') || chunks[0];
+    if (!chunk) {
+      FL.bus.emit('toast', { kind: 'warn', message: 'Ningún chunk disponible para promover en este scope.' });
+      return;
+    }
+    const t = k => i18n.t(k);
+    const checks = { pii: false, credentials: false, scope: false, ttl: false };
+
+    function renderModal() {
+      const body = step === 1 ? renderStep1() : step === 2 ? renderStep2() : renderStep3();
+      const backBtn = step > 1 ? '<button class="btn" data-pr-act="back">' + t('promote.back') + '</button>' : '';
+      const nextLabel = step === 3 ? t('promote.confirm') : t('promote.next');
+      const nextDisabled = step === 2 && !Object.values(checks).every(Boolean);
+      W.openModal(
+        '<h2 id="fl-modal-title" class="t-heading-lg" style="margin:0 0 var(--space-2);">Promover · paso ' + step + ' / 3</h2>' +
+        '<div class="t-body-sm muted" style="margin-bottom:var(--space-3);">' + (step === 1 ? t('promote.step1') : step === 2 ? t('promote.step2') : t('promote.step3')) + '</div>' +
+        '<div class="ak-prom-body">' + body + '</div>' +
+        '<div style="display:flex;gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-4);">' +
+          '<button class="btn" data-pr-act="cancel">' + t('common.cancel') + '</button>' +
+          backBtn +
+          '<button class="btn btn-primary" data-pr-act="next" ' + (nextDisabled ? 'disabled' : '') + '>' + nextLabel + '</button>' +
+        '</div>',
+        { width: 640 }
+      );
+      wireStep();
+    }
+
+    function renderStep1() {
+      const targetScope = selectedScope === 'user' ? 'dept' : selectedScope === 'dept' ? 'org' : selectedScope === 'org' ? 'global' : 'global';
+      return (
+        '<div><strong>Chunk:</strong> <code>' + chunk.id + '</code></div>' +
+        '<div class="t-body-md" style="margin:var(--space-2) 0; padding:var(--space-2); background:var(--bg-subtle); border-radius:var(--radius-sm);">' + chunk.content + '</div>' +
+        '<div class="muted">Promover de <strong>' + selectedScope + '</strong> → <strong>' + targetScope + '</strong></div>' +
+        '<div class="t-body-sm muted" style="margin-top:var(--space-2);">Nota: promoviendo NO borra el chunk original (versionado via <code>supersedes_chunk_id</code> per A5 canon).</div>'
+      );
+    }
+    function renderStep2() {
+      return (
+        '<ul class="ak-prom-checks">' +
+          '<li><label><input type="checkbox" data-chk="pii" ' + (checks.pii ? 'checked' : '') + '/> ' + t('promote.check_pii') + '</label></li>' +
+          '<li><label><input type="checkbox" data-chk="credentials" ' + (checks.credentials ? 'checked' : '') + '/> ' + t('promote.check_credentials') + '</label></li>' +
+          '<li><label><input type="checkbox" data-chk="scope" ' + (checks.scope ? 'checked' : '') + '/> ' + t('promote.check_scope') + '</label></li>' +
+          '<li><label><input type="checkbox" data-chk="ttl" ' + (checks.ttl ? 'checked' : '') + '/> ' + t('promote.check_ttl') + ' (default 90d)</label></li>' +
+        '</ul>' +
+        '<p class="t-body-sm muted" style="margin-top:var(--space-2);">Pipeline sanitización (A5 §7.2): regex PII, redacción nombres propios, redacción business_entity_id, revisión humana si confidence &lt; 0.95.</p>'
+      );
+    }
+    function renderStep3() {
+      return (
+        '<p class="t-body-md">¿Confirmás promoción de <code>' + chunk.id + '</code>?</p>' +
+        '<p class="t-body-sm muted">Se generará audit event <code>memory_chunk.promoted</code> con beforeState/afterState. Rollback disponible vía admin-knowledge (24h · <code>can_rollback_sharing</code>).</p>'
+      );
+    }
+    function wireStep() {
+      document.querySelector('[data-pr-act="cancel"]').addEventListener('click', () => W.closeModal());
+      const backBtn = document.querySelector('[data-pr-act="back"]');
+      if (backBtn) backBtn.addEventListener('click', () => { step--; renderModal(); });
+      document.querySelector('[data-pr-act="next"]').addEventListener('click', () => {
+        if (step === 2) {
+          const missing = Object.keys(checks).filter(k => !checks[k]);
+          if (missing.length) { FL.bus.emit('toast', { kind: 'warn', message: 'Faltan checks: ' + missing.join(', ') }); return; }
+        }
+        if (step === 3) { commit(); return; }
+        step++; renderModal();
+      });
+      document.querySelectorAll('[data-chk]').forEach(cb => {
+        cb.addEventListener('change', e => {
+          checks[cb.getAttribute('data-chk')] = e.target.checked;
+          renderModal();
+        });
+      });
+    }
+    function commit() {
+      FL.mock.auditEvents.unshift({
+        id: 'ae_' + Date.now(), ts: new Date().toISOString(), tenantId: FL.session.tenantId,
+        actor: FL.session.userId, action: 'memory_chunk.promoted', target: chunk.id,
+        severity: 'INFO', ip: '10.0.0.1', userAgent: 'FaberLoom/1.0',
+        beforeState: JSON.stringify({ scope: selectedScope, status: 'active' }),
+        afterState: JSON.stringify({ scope: 'promoted', supersedes_chunk_id: chunk.id })
+      });
+      W.closeModal();
+      FL.bus.emit('toast', { kind: 'success', message: i18n.t('promote.done') });
+      render();
+    }
+    renderModal();
+  }
+
+  function injectStyles() {
+    if (document.getElementById('ak-styles')) return;
+    const s = document.createElement('style'); s.id = 'ak-styles';
+    s.textContent = `
+.ak-wrap { display:flex; flex-direction:column; gap:var(--space-4); }
+.ak-wrap h1 { margin:0 0 var(--space-1); }
+.ak-layout { display:grid; grid-template-columns:260px 1fr; gap:var(--space-4); align-items:flex-start; }
+@media (max-width: 840px) { .ak-layout { grid-template-columns:1fr; } }
+.ak-tree { padding:var(--space-2); display:flex; flex-direction:column; gap:var(--space-1); }
+.ak-tree__row { display:block; width:100%; text-align:left; background:transparent; border:0; padding:var(--space-2) var(--space-3); border-radius:var(--radius-md); cursor:pointer; border-left:3px solid transparent; }
+.ak-tree__row:hover { background:var(--bg-subtle); }
+.ak-tree__row--active { background:var(--accent-primary-soft); border-left-color:var(--accent-primary); }
+.ak-panel { padding:var(--space-4); }
+.ak-panel h3 { margin:0; }
+.ak-chunks { list-style:none; padding:0; margin:var(--space-3) 0 0 0; display:flex; flex-direction:column; gap:var(--space-2); }
+.ak-chunk { padding:var(--space-3); background:var(--bg-subtle); border-radius:var(--radius-md); }
+/* [V2-PATCH 2026-04-19] promote flow */
+.ak-prom-body { display:flex; flex-direction:column; gap:var(--space-2); }
+.ak-prom-checks { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:var(--space-2); }
+.ak-prom-checks label { display:flex; align-items:center; gap:var(--space-2); cursor:pointer; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['admin-knowledge'] = { mount, meta: { route: '/admin/conocimiento' } };
+})();
+</script>

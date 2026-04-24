@@ -1,0 +1,133 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null;
+
+  function mount(slot) {
+    root = slot; injectStyles(); render();
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  function render() {
+    const t = k => i18n.t(k);
+    const containers_staging = ['nginx','api','runtime_worker','ingestion_worker','audit_worker','postgres','redis','minio','rabbitmq','prometheus','grafana'];
+    const containers_dev     = ['postgres','redis','minio','api'];
+    root.innerHTML =
+      '<div class="op-wrap">' +
+      '<header><h1 class="t-display-md">' + t('ops.health_title') + '</h1></header>' +
+      containerTile(t('ops.containers_staging'), containers_staging, 11) +
+      containerTile(t('ops.containers_dev'), containers_dev, 4) +
+      slosTile(t) +
+      jobsTile(t) +
+      alertsTile(t) +
+      tablesTile(t) +
+      rlsDebugTile(t) +
+      '</div>';
+  }
+
+  function containerTile(title, arr, expected) {
+    return (
+      '<section class="op-tile card">' +
+      '<h2 class="t-heading-md">' + title + '</h2>' +
+      '<div class="op-containers">' + arr.map(c => (
+        '<div class="op-c"><span class="op-c__dot" style="background:var(--status-success);"></span> <code>' + c + '</code></div>'
+      )).join('') + '</div>' +
+      '<p class="muted t-body-sm">' + arr.length + ' / ' + expected + ' up</p>' +
+      '</section>'
+    );
+  }
+
+  function slosTile(t) {
+    const slos = [
+      { label: t('ops.slos_p95'), val: '310ms', target: '<300ms', state: 'warn' },
+      { label: t('ops.slos_avail'), val: '99.94%', target: '99.9%', state: 'ok' },
+      { label: t('ops.slos_error'), val: '0.3%', target: '<1%', state: 'ok' }
+    ];
+    return (
+      '<section class="op-tile card">' +
+      '<h2 class="t-heading-md">' + t('ops.slos') + '</h2>' +
+      '<div class="op-slo">' + slos.map(s => (
+        '<div class="op-slo__card">' +
+          '<div class="t-label-sm muted">' + s.label + '</div>' +
+          '<div class="t-display-md" style="color:var(--' + (s.state === 'warn' ? 'status-warning' : 'status-success') + ');">' + s.val + '</div>' +
+          '<div class="t-body-sm muted">SLO ' + s.target + '</div>' +
+        '</div>'
+      )).join('') + '</div>' +
+      '</section>'
+    );
+  }
+
+  function jobsTile(t) {
+    const jobs = FL.mock.jobs.slice(0, 10);
+    return (
+      '<section class="op-tile card">' +
+      '<h2 class="t-heading-md">' + t('ops.jobs') + '</h2>' +
+      '<table class="op-tbl"><thead><tr><th>name</th><th>scheduled</th><th>status</th><th>dur</th></tr></thead>' +
+      '<tbody>' + jobs.map(j => '<tr><td><code>' + j.name + '</code></td><td class="mono muted">' + j.scheduledFor.slice(5, 16).replace('T', ' ') + '</td><td>' + W.draftStateBadge(j.status === 'completed' ? 'completed' : j.status === 'running' ? 'executing' : 'failed') + '</td><td class="mono">' + (j.durationSec != null ? j.durationSec + 's' : '—') + '</td></tr>').join('') + '</tbody></table>' +
+      '</section>'
+    );
+  }
+
+  function alertsTile(t) {
+    const alerts = FL.mock.alerts;
+    return (
+      '<section class="op-tile card">' +
+      '<h2 class="t-heading-md">' + t('ops.alerts') + '</h2>' +
+      '<ul class="op-alerts">' + alerts.map(a => (
+        '<li class="op-alert"><span class="chip ' + (a.severity === 'warn' ? 'chip-warning' : 'chip-info') + '">' + a.severity.toUpperCase() + '</span>' +
+        ' <strong>' + a.title + '</strong> <span class="muted t-body-sm">desde ' + a.since.slice(11, 16) + '</span></li>'
+      )).join('') + '</ul>' +
+      '</section>'
+    );
+  }
+
+  function tablesTile(t) {
+    return (
+      '<section class="op-tile card">' +
+      '<h2 class="t-heading-md">' + t('ops.tables') + ' · 20 FROZEN</h2>' +
+      '<table class="op-tbl"><thead><tr><th>name</th><th>' + t('ops.tables_sprint') + '</th><th>' + t('ops.tables_rows') + '</th><th>' + t('ops.tables_size') + '</th></tr></thead>' +
+      '<tbody>' + FL.mock.tables.map(tb => '<tr><td><code>' + tb.name + '</code></td><td><span class="chip">' + tb.sprint + '</span></td><td class="mono">' + tb.rowCount + '</td><td class="mono">' + tb.sizeKB + '</td></tr>').join('') + '</tbody></table>' +
+      '</section>'
+    );
+  }
+
+  function rlsDebugTile(t) {
+    return (
+      '<section class="op-tile card">' +
+      '<h2 class="t-heading-md">' + t('ops.rls_debug') + '</h2>' +
+      '<pre class="op-pre">SET LOCAL app.tenant_id   = \'' + FL.session.tenantId + '\';\n' +
+      'SET LOCAL app.user_id     = \'' + FL.session.userId + '\';\n' +
+      'SET LOCAL app.role        = \'' + FL.session.role + '\';\n' +
+      'SET LOCAL app.dept_ids    = \'d_ops,d_ventas\';\n' +
+      'SET LOCAL app.break_glass = \'' + (FL.session.isBreakGlassActive() ? 'true' : 'false') + '\';</pre>' +
+      '</section>'
+    );
+  }
+
+  function injectStyles() {
+    if (document.getElementById('op-styles')) return;
+    const s = document.createElement('style'); s.id = 'op-styles';
+    s.textContent = `
+.op-wrap { display:flex; flex-direction:column; gap:var(--space-4); max-width:1400px; }
+.op-wrap h1 { margin:0; }
+.op-tile { padding:var(--space-4); }
+.op-tile h2 { margin:0 0 var(--space-3); }
+.op-containers { display:grid; grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:var(--space-2); }
+.op-c { display:flex; align-items:center; gap:var(--space-1); font-size:12px; padding:4px 8px; background:var(--bg-subtle); border-radius:var(--radius-sm); }
+.op-c__dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.op-slo { display:grid; grid-template-columns:repeat(3, 1fr); gap:var(--space-3); }
+@media (max-width: 640px) { .op-slo { grid-template-columns:1fr; } }
+.op-slo__card { padding:var(--space-3); background:var(--bg-subtle); border-radius:var(--radius-md); }
+.op-tbl { width:100%; border-collapse:collapse; font-size:12px; }
+.op-tbl th, .op-tbl td { padding:var(--space-1) var(--space-2); text-align:left; border-bottom:1px solid var(--stroke-default); }
+.op-tbl th { font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); font-weight:600; }
+.op-alerts { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:var(--space-2); }
+.op-pre { background:var(--bg-sunken); padding:var(--space-3); border-radius:var(--radius-md); font-family:var(--font-mono); font-size:12px; color:var(--text-secondary); margin:0; overflow:auto; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['ops-health'] = { mount, meta: { route: '/ops/health' } };
+})();
+</script>

@@ -1,0 +1,135 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null, selected = null;
+
+  const NODES = [
+    { id:'n1', type:'trigger',   label:'rfq_received',      x:60,  y:120, detail:'Incoming RFQ via email' },
+    { id:'n2', type:'retrieve',  label:'stock_lookup',      x:220, y:60,  detail:'Query stock table (MRP)' },
+    { id:'n3', type:'retrieve',  label:'price_table',       x:220, y:180, detail:'Query price_table (2026-04-01)' },
+    { id:'n4', type:'llm',       label:'compose_draft',     x:400, y:120, detail:'LLM generates draft with claims' },
+    { id:'n5', type:'validator', label:'provenance_check',  x:560, y:120, detail:'Every claim has evidence_span' },
+    { id:'n6', type:'hitl',      label:'awaiting_approval', x:720, y:120, detail:'Human gate (draft-first)' },
+    { id:'n7', type:'action',    label:'send_email',        x:880, y:120, detail:'External send via Postmark' }
+  ];
+  const EDGES = [ ['n1','n2'], ['n1','n3'], ['n2','n4'], ['n3','n4'], ['n4','n5'], ['n5','n6'], ['n6','n7'] ];
+
+  function mount(slot) {
+    root = slot; injectStyles();
+    render();
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  function render() {
+    const t = k => i18n.t(k);
+    root.innerHTML =
+      '<div class="wf-wrap">' +
+        '<header class="wf-head"><h1 class="t-display-md">' + t('workflow.title') + '</h1>' +
+        '<button class="btn btn-primary" data-act="exec">▶ ' + t('workflow.execute') + '</button></header>' +
+        '<div class="wf-layout">' +
+          '<aside class="wf-palette card"><h3 class="t-label-md">' + t('workflow.palette') + '</h3>' +
+          ['trigger','retrieve','llm','validator','hitl','action','branch'].map(k =>
+            '<button class="wf-p-item" data-add-node="' + k + '" style="background:var(--node-' + k + '-soft, transparent); border-left: 3px solid var(--node-' + k + ');" title="Click para agregar nodo">' + t('workflow.node_' + k) + ' +</button>'
+          ).join('') + '</aside>' +
+          '<div class="wf-canvas card">' + svg() + '</div>' +
+          '<aside class="wf-inspector card" id="wf-insp"><h3 class="t-label-md">' + t('workflow.inspector') + '</h3><p class="muted">' + t('workflow.select_node') + '</p></aside>' +
+        '</div>' +
+      '</div>';
+
+    root.querySelectorAll('[data-node]').forEach(el => {
+      el.addEventListener('click', () => selectNode(el.getAttribute('data-node')));
+    });
+    /* [V3-PATCH 2026-04-19] Run with animated node highlighting */
+    const ex = root.querySelector('[data-act="exec"]');
+    if (ex) ex.addEventListener('click', () => animateRun());
+    /* [V3-PATCH 2026-04-19] Add node from palette */
+    root.querySelectorAll('[data-add-node]').forEach(b => {
+      b.addEventListener('click', () => addNodeFromPalette(b.getAttribute('data-add-node')));
+    });
+  }
+
+  function animateRun() {
+    FL.bus.emit('toast', { kind:'info', message:'▶ Ejecutando workflow · ' + NODES.length + ' nodos secuenciales' });
+    NODES.forEach((n, i) => {
+      setTimeout(() => {
+        const el = root.querySelector('[data-node="' + n.id + '"] rect');
+        if (el) {
+          el.setAttribute('fill', 'var(--node-' + n.type + ')');
+          el.setAttribute('opacity', '0.85');
+          setTimeout(() => { el.setAttribute('fill', 'var(--bg-surface)'); el.setAttribute('opacity', '1'); }, 600);
+        }
+        if (i === NODES.length - 1) {
+          setTimeout(() => FL.bus.emit('toast', { kind:'success', message:'✓ Workflow completado · 7/7 nodos OK' }), 700);
+        }
+      }, i * 400);
+    });
+  }
+
+  function addNodeFromPalette(type) {
+    const newId = 'n' + (NODES.length + 1);
+    NODES.push({ id:newId, type:type, label:type + '_new', x:60 + (NODES.length * 30), y:240, detail:'Nuevo nodo · editar en inspector' });
+    FL.bus.emit('toast', { kind:'success', message:'+ Nodo ' + type + ' agregado · arrastrar en futuro' });
+    render();
+  }
+
+  function svg() {
+    const edges = EDGES.map(([a, b]) => {
+      const na = NODES.find(n => n.id === a), nb = NODES.find(n => n.id === b);
+      const x1 = na.x + 60, y1 = na.y + 25, x2 = nb.x, y2 = nb.y + 25;
+      const cx = (x1 + x2) / 2;
+      return '<path class="wf-edge" d="M' + x1 + ' ' + y1 + ' C ' + cx + ' ' + y1 + ', ' + cx + ' ' + y2 + ', ' + x2 + ' ' + y2 + '"/>';
+    }).join('');
+    const nodes = NODES.map(n =>
+      '<g class="wf-node" data-node="' + n.id + '" style="cursor:pointer;">' +
+        '<rect x="' + n.x + '" y="' + n.y + '" width="120" height="50" rx="10" fill="var(--bg-surface)" stroke="var(--node-' + n.type + ')" stroke-width="2"/>' +
+        '<circle cx="' + (n.x + 14) + '" cy="' + (n.y + 25) + '" r="5" fill="var(--node-' + n.type + ')"/>' +
+        '<text x="' + (n.x + 28) + '" y="' + (n.y + 22) + '" font-size="11" fill="var(--text-muted)" font-family="var(--font-mono)">' + n.type + '</text>' +
+        '<text x="' + (n.x + 28) + '" y="' + (n.y + 38) + '" font-size="12" fill="var(--text-primary)" font-weight="500">' + n.label + '</text>' +
+      '</g>'
+    ).join('');
+    return '<svg viewBox="0 0 1040 320" preserveAspectRatio="xMidYMid meet" role="img" aria-label="Workflow canvas">' + edges + nodes + '</svg>';
+  }
+
+  function selectNode(id) {
+    selected = NODES.find(n => n.id === id);
+    if (!selected) return;
+    const box = document.getElementById('wf-insp');
+    if (!box) return;
+    box.innerHTML = '<h3 class="t-label-md">' + i18n.t('workflow.inspector') + '</h3>' +
+      '<dl class="wf-insp__dl">' +
+        '<dt>id</dt><dd><code>' + selected.id + '</code></dd>' +
+        '<dt>type</dt><dd><span class="chip" style="color:var(--node-' + selected.type + ');border-color:var(--node-' + selected.type + ');">' + selected.type + '</span></dd>' +
+        '<dt>label</dt><dd>' + selected.label + '</dd>' +
+        '<dt>detail</dt><dd class="t-body-sm">' + selected.detail + '</dd>' +
+        '<dt>coords</dt><dd><code>(' + selected.x + ', ' + selected.y + ')</code></dd>' +
+      '</dl>';
+  }
+
+  function injectStyles() {
+    if (document.getElementById('wf-styles')) return;
+    const s = document.createElement('style'); s.id = 'wf-styles';
+    s.textContent = `
+.wf-wrap { display:flex; flex-direction:column; gap:var(--space-4); }
+.wf-head { display:flex; justify-content:space-between; align-items:center; }
+.wf-head h1 { margin:0; }
+.wf-layout { display:grid; grid-template-columns:180px 1fr 240px; gap:var(--space-3); align-items:flex-start; }
+@media (max-width: 980px) { .wf-layout { grid-template-columns:1fr; } }
+.wf-palette, .wf-inspector { padding:var(--space-3); }
+.wf-palette h3, .wf-inspector h3 { margin:0 0 var(--space-2) 0; color:var(--text-muted); }
+.wf-p-item { display:block; width:100%; text-align:left; padding:var(--space-1) var(--space-2); margin:var(--space-1) 0; border-radius:var(--radius-sm); font-size:12px; cursor:pointer; border:0; font:inherit; color:inherit; transition:filter var(--dur-fast); }
+.wf-p-item:hover { filter:brightness(0.95); }
+.wf-canvas { padding:var(--space-3); min-height:360px; background-image: radial-gradient(circle, var(--stroke-default) 1px, transparent 1px); background-size: 20px 20px; }
+.wf-canvas svg { width:100%; height:auto; display:block; }
+.wf-edge { fill:none; stroke:var(--stroke-strong); stroke-width:1.8; }
+.wf-node:hover rect { filter: brightness(0.97); }
+.wf-insp__dl { display:grid; grid-template-columns:auto 1fr; gap:var(--space-1) var(--space-2); margin:0; font-size:12px; }
+.wf-insp__dl dt { color:var(--text-muted); }
+.wf-insp__dl dd { margin:0; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['workflows-canvas'] = { mount, meta: { route: '/workflows' } };
+})();
+</script>

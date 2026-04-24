@@ -1,0 +1,1644 @@
+/* ============================================================
+   FaberLoom v1 Beta — Widgets (15 total)
+   All attach to window.__faberloom.widgets.
+   Ported from widgets.js + extended: DraftStateBadge, Toast, Diff,
+   Tabs factory, Timeline factory, DegradedCard wrapper.
+   ============================================================ */
+
+(function () {
+  const FL = window.__faberloom;
+  if (!FL) { console.error('boot must load before widgets'); return; }
+  const W = FL.widgets = FL.widgets || {};
+  const i18n = FL.i18n, bus = FL.bus, a11y = FL.a11y;
+
+  /* ─── 1. Thermometer ─────────────────────────────── */
+  W.thermometer = function (state, count) {
+    count = count || 0;
+    const map = {
+      cold: { color: 'var(--thermo-cold)', bg: 'var(--status-info-soft)', icon: '🔵', key: 'skill.thermo_cold', fb: 'Frío' },
+      warm: { color: 'var(--thermo-warm)', bg: 'var(--status-warning-soft)', icon: '🟡', key: 'skill.thermo_warm', fb: 'Tibio' },
+      hot:  { color: 'var(--thermo-hot)',  bg: 'var(--status-danger-soft)',  icon: '🔴', key: 'skill.thermo_hot',  fb: 'Caliente' }
+    };
+    const c = map[state] || map.cold;
+    const label = i18n.t(c.key, c.fb);
+    return (
+      '<span class="fl-thermometer" data-widget="thermometer" ' +
+      'style="background:' + c.bg + '; color:' + c.color + '; border-color: transparent;" ' +
+      'role="status" aria-label="' + label + ' · ' + count + '">' +
+      '<span aria-hidden="true">' + c.icon + '</span>' +
+      '<span style="font-weight:600;">' + label + '</span>' +
+      (count > 0 ? '<span style="opacity:0.85;">· ' + count + '</span>' : '') +
+      '</span>'
+    );
+  };
+
+  /* ─── 2. Autonomy Ladder L0-L4 ───────────────────── */
+  W.autonomyLadder = function (currentLevel, opts) {
+    opts = opts || {};
+    const levels = [0, 1, 2, 3, 4];
+    const labelMap = [ 'autonomy.l0.name', 'autonomy.l1.name', 'autonomy.l2.name', 'autonomy.l3.name', 'autonomy.l4.name' ];
+    const fbMap    = [ 'Shadow', 'Propone', 'Auto-bajo', 'Auto+notif', 'Auto+excepciones' ];
+    const parts = levels.map(L => {
+      const isActive = L === currentLevel;
+      const isCompleted = L < currentLevel;
+      const isLocked = L > currentLevel;
+      const stateClass = isActive ? 'active' : isCompleted ? 'completed' : 'locked';
+      const name = i18n.t(labelMap[L], fbMap[L]);
+      return (
+        '<div class="fl-ladder-step ' + stateClass + '" style="--ladder-color: var(--autonomy-l' + L + ');">' +
+          '<div class="fl-ladder-dot" aria-hidden="true">' +
+          (isLocked ? '🔒' : isCompleted ? '✓' : 'L' + L) +
+          '</div>' +
+          '<div class="fl-ladder-label">' +
+            '<div class="t-label-sm">L' + L + '</div>' +
+            '<div class="t-body-sm" style="font-weight:500; color: var(--text-primary);">' + name + '</div>' +
+          '</div>' +
+        '</div>'
+      );
+    });
+    return (
+      '<div class="fl-ladder" data-widget="autonomy-ladder" role="group" aria-label="Autonomy ladder">' +
+      parts.join('<div class="fl-ladder-bar" aria-hidden="true"></div>') +
+      (opts.unlock ? '<div class="fl-ladder-unlock"><span class="t-label-sm muted">' + i18n.t('agent.unlock_criterion', 'Criterio para subir') + '</span>' +
+        '<div class="t-body-sm">' + opts.unlock + '</div></div>' : '') +
+      '</div>'
+    );
+  };
+
+  /* ─── 3. Provenance superscript ──────────────────── */
+  W.provenanceSup = function (claimId, evidenceSpanId, label) {
+    return '<sup class="fl-prov-sup" data-widget="provenance-sup" data-claim="' + claimId + '" data-evidence="' + evidenceSpanId + '" tabindex="0" role="button" aria-label="Evidencia ' + label + '">' + label + '</sup>';
+  };
+
+  /* ─── 4. Risk Badge (6-field action-risk registry) ─ */
+  W.riskBadge = function (action) {
+    if (!action) return '';
+    const rev = action.reversibility || 'reversible_24h';
+    const colorMap = {
+      reversible_24h: 'var(--risk-low)',
+      reversible_cost: 'var(--risk-med)',
+      irreversible: 'var(--risk-high)',
+      irreversible_cost: 'var(--risk-irreversible)'
+    };
+    const iconMap = { reversible_24h: '◔', reversible_cost: '◑', irreversible: '◕', irreversible_cost: '●' };
+    const labelMap = { reversible_24h: 'Reversible ≤24h', reversible_cost: 'Reversible con costo', irreversible: 'Irreversible', irreversible_cost: 'Irreversible con costo' };
+    const c = colorMap[rev] || 'var(--risk-low)';
+    const icon = iconMap[rev] || '◯';
+    const label = i18n.t('risk.' + rev, labelMap[rev] || rev);
+    const tip = [
+      'Reversibility: ' + label,
+      'Min autonomy: ' + (action.min_autonomy || 'L1'),
+      'Required role: ' + (action.required_role || 'operator'),
+      'Audit class: ' + (action.audit_class || 'operational')
+    ].join(' · ');
+    return '<span class="chip fl-risk-badge" data-widget="risk-badge" title="' + tip + '" style="color:' + c + '; border-color:' + c + ';">' +
+      '<span aria-hidden="true">' + icon + '</span> ' + label +
+      '</span>';
+  };
+
+  /* ─── 5. Draft State Badge (9-state machine) ────── */
+  W.draftStateBadge = function (state) {
+    const map = {
+      drafting:              { color: 'var(--draft-drafting)',          icon: '✎', fb: 'Redactando' },
+      awaiting_approval:     { color: 'var(--draft-pending)',           icon: '⏳', fb: 'Esperando aprobación' },
+      approved:              { color: 'var(--draft-approved)',          icon: '✓', fb: 'Aprobado' },
+      executing:             { color: 'var(--draft-executing)',         icon: '▶', fb: 'Ejecutando' },
+      waiting_external_signal:{ color: 'var(--draft-waiting-external)', icon: '⌚', fb: 'Esperando señal externa' },
+      blocked:               { color: 'var(--draft-blocked)',           icon: '⛔', fb: 'Bloqueado' },
+      completed:             { color: 'var(--draft-completed)',         icon: '◉', fb: 'Completado' },
+      failed:                { color: 'var(--draft-failed)',            icon: '✕', fb: 'Fallido' },
+      escalated:             { color: 'var(--draft-escalated)',         icon: '↑', fb: 'Escalado' },
+      rejected:              { color: 'var(--draft-rejected)',          icon: '✕', fb: 'Rechazado' }
+    };
+    const c = map[state] || map.drafting;
+    const label = i18n.t('states.' + state, c.fb);
+    return '<span class="chip fl-draft-state" data-widget="draft-state-badge" data-state="' + state + '" ' +
+      'style="color:' + c.color + '; border-color:' + c.color + ';">' +
+      '<span aria-hidden="true">' + c.icon + '</span> ' + label +
+      '</span>';
+  };
+
+  /* ─── 6. EmptyState ───────────────────────────────── */
+  W.emptyState = function (opts) {
+    opts = opts || {};
+    const icon = opts.icon || '○';
+    return '<div class="fl-empty" data-widget="empty-state" role="status">' +
+      '<div class="fl-empty-icon" aria-hidden="true">' + icon + '</div>' +
+      '<h3 class="t-heading-md" style="margin: 0 0 var(--space-2) 0;">' + (opts.title || i18n.t('common.empty', 'Sin elementos')) + '</h3>' +
+      (opts.subtitle ? '<p class="t-body-md" style="color: var(--text-muted); margin: 0 0 var(--space-4) 0;">' + opts.subtitle + '</p>' : '') +
+      (opts.cta ? '<a href="' + (opts.ctaHref || '#') + '" class="btn btn-primary">' + opts.cta + '</a>' : '') +
+      '</div>';
+  };
+
+  /* ─── 7. LoadingSkeleton ─────────────────────────── */
+  W.skeleton = function (opts) {
+    opts = opts || {};
+    const rows = opts.rows || 3;
+    const height = opts.height || 18;
+    const parts = [];
+    for (let i = 0; i < rows; i++) {
+      parts.push('<div class="fl-skeleton-row" style="height:' + height + 'px; width:' + (100 - i * 8) + '%; margin-bottom: var(--space-2);"></div>');
+    }
+    return '<div class="fl-skeleton" data-widget="loading-skeleton" aria-hidden="true">' + parts.join('') + '</div>';
+  };
+  W.loadingState = function () {
+    return '<div class="card" aria-busy="true">' + W.skeleton({ rows: 4 }) + '</div>';
+  };
+
+  /* ─── 8. DegradedCard wrapper ────────────────────── */
+  W.degradedCard = function (pattern, err) {
+    return FL.renderDegradedCard(pattern, err);
+  };
+
+  /* ─── 9. Modal core ──────────────────────────────── */
+  let activeOverlay = null;
+  let activeUntrap = null;
+  W.openModal = function (html, opts) {
+    opts = opts || {};
+    W.closeModal();
+    const root = document.getElementById('fl-overlay-slot');
+    if (!root) return;
+    root.innerHTML = (
+      '<div class="fl-overlay-backdrop" data-fl-overlay role="dialog" aria-modal="true" aria-labelledby="fl-modal-title">' +
+        '<div class="fl-overlay-card card" style="max-width:' + (opts.width || 560) + 'px; width:100%;">' +
+        html +
+        '</div>' +
+      '</div>'
+    );
+    activeOverlay = root.querySelector('[data-fl-overlay]');
+    activeOverlay.addEventListener('click', e => { if (e.target === activeOverlay) W.closeModal(); });
+    activeUntrap = a11y.trapFocus(activeOverlay);
+    i18n.applyToDom(activeOverlay);
+  };
+  W.closeModal = function () {
+    if (activeUntrap) { activeUntrap(); activeUntrap = null; }
+    const root = document.getElementById('fl-overlay-slot');
+    if (root) root.innerHTML = '';
+    activeOverlay = null;
+  };
+  bus.on('overlay:close', () => W.closeModal());
+
+  /* ─── 10. FeedbackModal (5 reasons per prompt) ──── */
+  W.openFeedbackModal = function (draftId) {
+    const t = k => i18n.t(k);
+    // 5 reasons per prompt §10: no_evidence, tone, wrong_data, risky, other
+    const reasons = [
+      { code: 'claim_sin_evidencia', key: 'feedback.reason_no_evidence', fb: 'Claim sin evidencia' },
+      { code: 'tono',                key: 'feedback.reason_tone',        fb: 'Tono inadecuado' },
+      { code: 'dato_incorrecto',     key: 'feedback.reason_wrong_data',  fb: 'Dato incorrecto' },
+      { code: 'accion_riesgosa',     key: 'feedback.reason_risky',       fb: 'Acción riesgosa' },
+      { code: 'otro',                key: 'feedback.reason_other',       fb: 'Otro' }
+    ];
+    W.openModal(
+      '<h2 id="fl-modal-title" class="t-heading-lg" style="margin:0 0 var(--space-2) 0;">' + t('feedback.title') + '</h2>' +
+      '<p class="t-body-sm" style="margin:0 0 var(--space-5) 0; color:var(--text-muted);">Draft: <code>' + draftId + '</code></p>' +
+      '<div class="fl-feedback-list">' +
+      reasons.map((r, i) => {
+        /* [V3-PATCH 2026-04-19] C1 · feedback taxonomy mapping tooltip */
+        const codeMap = { claim_sin_evidencia:'data', tono:'tone', dato_incorrecto:'data', accion_riesgosa:'policy', otro:'context' };
+        const internalCode = codeMap[r.code] || 'context';
+        return '<label class="fl-feedback-item" title="UI reason → A4/P6 internal code: ' + r.code + ' → ' + internalCode + '">' +
+          '<input type="radio" name="fb-reason" value="' + r.code + '"' + (i === 0 ? ' checked' : '') + '/>' +
+          '<div><div class="t-heading-sm">' + i18n.t(r.key, r.fb) + '</div>' +
+          '<div class="t-body-sm muted">→ <code>' + internalCode + '</code></div></div>' +
+        '</label>';
+      }).join('') +
+      '</div>' +
+      '<label class="t-label-sm" style="display:block;margin:var(--space-5) 0 var(--space-2) 0;color:var(--text-muted);">' + t('feedback.note') + '</label>' +
+      '<textarea class="textarea" rows="3" id="fb-note" aria-label="Note"></textarea>' +
+      '<div style="display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-5);">' +
+        '<button class="btn" data-action="cancel">' + t('common.cancel') + '</button>' +
+        '<button class="btn btn-primary" data-action="submit">' + t('feedback.submit') + '</button>' +
+      '</div>',
+      { width: 540 }
+    );
+    document.querySelector('[data-action="cancel"]').addEventListener('click', W.closeModal);
+    document.querySelector('[data-action="submit"]').addEventListener('click', () => {
+      const reason = document.querySelector('input[name="fb-reason"]:checked').value;
+      const note = document.getElementById('fb-note').value;
+      bus.emit('feedback:submit', { draftId, reason, note, ts: new Date().toISOString() });
+      bus.emit('toast', { kind: 'success', message: t('feedback.submitted') });
+      W.closeModal();
+    });
+  };
+
+  /* ─── 11. ConsolidationModal ──────────────────────── */
+  W.openConsolidationModal = function (consolidation) {
+    const t = k => i18n.t(k);
+    W.openModal(
+      '<h2 id="fl-modal-title" class="t-heading-lg" style="margin:0 0 var(--space-2) 0;display:flex;align-items:center;gap:var(--space-2);">' +
+      W.thermometer(consolidation.thermometer || 'hot', consolidation.patternCount || 6) +
+      '<span>' + t('consolidation.title') + '</span></h2>' +
+      '<p class="t-body-sm" style="margin:0 0 var(--space-5) 0;color:var(--text-muted);">' +
+        (consolidation.patternCount || 6) + ' ' + t('consolidation.accumulated') + ' · ' + (consolidation.accumulatedSince || '') +
+      '</p>' +
+      '<section class="fl-cons-section"><h3 class="t-label-md">' + t('consolidation.sections.learned') + '</h3>' +
+        '<p class="t-body-md">' + (consolidation.suggestedRule || '') + '</p></section>' +
+      '<section class="fl-cons-section"><h3 class="t-label-md">' + t('consolidation.sections.applies') + '</h3>' +
+        '<div class="fl-cons-applies">' +
+          '<div><span class="t-label-sm">Tipo</span><div class="chip chip-info">' + (consolidation.learnType || 'skill') + '</div></div>' +
+          /* [V3-PATCH 2026-04-19] C4 · 3-level cluster scope (skill/cluster/org per A4 P12) */
+          '<div><span class="t-label-sm">Alcance</span><select class="select" data-cluster-scope style="font-size:12px;padding:2px 6px;min-height:24px;width:auto;"><option value="skill"' + (consolidation.scope === 'skill' ? ' selected' : '') + '>skill (este skill)</option><option value="cluster"' + (consolidation.scope === 'cluster' ? ' selected' : '') + '>cluster (skills similares)</option><option value="org"' + (consolidation.scope === 'org' ? ' selected' : '') + '>org (todos los skills)</option></select></div>' +
+          '<div><span class="t-label-sm">' + t('consolidation.crossSkill') + '</span><div class="chip ' + (consolidation.crossSkill ? 'chip-success' : '') + '">' + (consolidation.crossSkill ? '✓ Sí' : '— No') + '</div></div>' +
+        '</div></section>' +
+      (consolidation.impactPreview ?
+      '<section class="fl-cons-section"><h3 class="t-label-md">' + t('consolidation.sections.impact') + '</h3>' +
+        '<div class="fl-cons-impact">' +
+          '<div><div class="t-label-sm">' + t('consolidation.before') + '</div>' +
+          '<div class="t-body-md" style="background:var(--bg-sunken);padding:var(--space-3);border-radius:var(--radius-md);font-style:italic;color:var(--text-muted);">' + consolidation.impactPreview.before + '</div></div>' +
+          '<div><div class="t-label-sm" style="color:var(--accent-primary);">' + t('consolidation.after') + '</div>' +
+          '<div class="t-body-md" style="background:var(--accent-primary-soft);padding:var(--space-3);border-radius:var(--radius-md);border-left:3px solid var(--accent-primary);">' + consolidation.impactPreview.after + '</div></div>' +
+        '</div></section>' : '') +
+      '<div style="display:flex;justify-content:flex-end;gap:var(--space-2);margin-top:var(--space-6);padding-top:var(--space-4);border-top:1px solid var(--stroke-default);">' +
+        '<button class="btn" data-action="discard">' + t('consolidation.discard') + '</button>' +
+        '<button class="btn btn-primary" data-action="confirm">' + t('consolidation.confirm') + '</button>' +
+      '</div>',
+      { width: 640 }
+    );
+    document.querySelector('[data-action="discard"]').addEventListener('click', W.closeModal);
+    document.querySelector('[data-action="confirm"]').addEventListener('click', () => {
+      bus.emit('consolidation:submit', { id: consolidation.id });
+      bus.emit('toast', { kind: 'success', message: t('consolidation.submitted') });
+      W.closeModal();
+    });
+  };
+
+  /* ─── 12. Toast ──────────────────────────────────── */
+  W.toast = function (opts) {
+    opts = opts || {};
+    const kind = opts.kind || 'info';
+    const msg  = opts.message || '';
+    const dur  = opts.duration || 4000;
+    const slot = document.getElementById('fl-toast-slot');
+    if (!slot) return;
+    const el = document.createElement('div');
+    el.className = 'fl-toast fl-toast--' + kind;
+    el.setAttribute('role', kind === 'error' || kind === 'warn' ? 'alert' : 'status');
+    el.setAttribute('data-widget', 'toast');
+    const iconMap = { success: '✓', info: 'ℹ', warn: '⚠', error: '✕' };
+    el.innerHTML = '<span class="fl-toast__icon" aria-hidden="true">' + (iconMap[kind] || 'ℹ') + '</span>' +
+      '<span class="fl-toast__msg">' + msg + '</span>' +
+      '<button class="fl-toast__close" aria-label="Cerrar">×</button>';
+    slot.appendChild(el);
+    const remove = () => { el.classList.add('fl-toast--out'); setTimeout(() => el.remove(), 240); };
+    el.querySelector('.fl-toast__close').addEventListener('click', remove);
+    setTimeout(remove, dur);
+  };
+
+  /* ─── 13. Tabs factory ───────────────────────────── */
+  W.tabs = function (items, options) {
+    options = options || {};
+    const active = options.active || items[0].id;
+    const tabsHtml = items.map(i =>
+      '<button class="fl-tab' + (i.id === active ? ' fl-tab--active' : '') + '" role="tab" aria-selected="' + (i.id === active) + '" data-tab="' + i.id + '" tabindex="' + (i.id === active ? '0' : '-1') + '">' + i.label + '</button>'
+    ).join('');
+    const panelsHtml = items.map(i =>
+      '<div class="fl-tab-panel' + (i.id === active ? ' fl-tab-panel--active' : '') + '" role="tabpanel" data-tab-panel="' + i.id + '" ' + (i.id === active ? '' : 'hidden') + '>' + (i.panel || '') + '</div>'
+    ).join('');
+    return (
+      '<div class="fl-tabs" data-widget="tabs">' +
+        '<div class="fl-tab-list" role="tablist">' + tabsHtml + '</div>' +
+        '<div class="fl-tab-panels">' + panelsHtml + '</div>' +
+      '</div>'
+    );
+  };
+  W.wireTabs = function (root, onChange) {
+    const buttons = root.querySelectorAll('.fl-tab');
+    const panels  = root.querySelectorAll('.fl-tab-panel');
+    const activate = (id) => {
+      buttons.forEach(b => {
+        const on = b.getAttribute('data-tab') === id;
+        b.classList.toggle('fl-tab--active', on);
+        b.setAttribute('aria-selected', on);
+        b.setAttribute('tabindex', on ? '0' : '-1');
+      });
+      panels.forEach(p => {
+        const on = p.getAttribute('data-tab-panel') === id;
+        p.classList.toggle('fl-tab-panel--active', on);
+        if (on) p.removeAttribute('hidden'); else p.setAttribute('hidden', '');
+      });
+      if (onChange) onChange(id);
+    };
+    buttons.forEach(b => {
+      b.addEventListener('click', () => activate(b.getAttribute('data-tab')));
+      b.addEventListener('keydown', e => {
+        if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+        const arr = Array.from(buttons);
+        const idx = arr.indexOf(b);
+        const next = e.key === 'ArrowRight' ? (idx + 1) % arr.length : (idx - 1 + arr.length) % arr.length;
+        arr[next].focus();
+        activate(arr[next].getAttribute('data-tab'));
+      });
+    });
+  };
+
+  /* ─── 14. Diff (2-column) ────────────────────────── */
+  W.diff = function (leftStr, rightStr, opts) {
+    opts = opts || {};
+    const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return (
+      '<div class="fl-diff" data-widget="diff">' +
+        '<div class="fl-diff__col fl-diff__col--left">' +
+          '<div class="t-label-sm muted">' + (opts.leftLabel || i18n.t('consolidation.before', 'Antes')) + '</div>' +
+          '<pre class="fl-diff__pre">' + esc(leftStr) + '</pre>' +
+        '</div>' +
+        '<div class="fl-diff__col fl-diff__col--right">' +
+          '<div class="t-label-sm" style="color:var(--accent-primary);">' + (opts.rightLabel || i18n.t('consolidation.after', 'Después')) + '</div>' +
+          '<pre class="fl-diff__pre fl-diff__pre--right">' + esc(rightStr) + '</pre>' +
+        '</div>' +
+      '</div>'
+    );
+  };
+
+  /* ─── 15. Timeline ───────────────────────────────── */
+  W.timeline = function (entries, opts) {
+    opts = opts || {};
+    const rows = (entries || []).map(e => {
+      const stateCls = e.status === 'done' ? 'done' : e.status === 'active' ? 'active' : 'pending';
+      return (
+        '<div class="fl-tl__row fl-tl__row--' + stateCls + '">' +
+          '<div class="fl-tl__ts">' + (e.ts || '') + '</div>' +
+          '<div class="fl-tl__dot" aria-hidden="true"></div>' +
+          '<div class="fl-tl__body">' +
+            '<div class="fl-tl__actor">' + (e.actor || '') + '</div>' +
+            '<div class="fl-tl__action"><strong>' + (e.action || e.node || '') + '</strong>' + (e.detail ? ' · <span class="muted">' + e.detail + '</span>' : '') + '</div>' +
+          '</div>' +
+        '</div>'
+      );
+    }).join('');
+    return '<div class="fl-tl" data-widget="timeline">' + rows + '</div>';
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     [V2-PATCH 2026-04-19] · Chat widgets (10 new)
+     ═══════════════════════════════════════════════════════════════ */
+
+  /**
+   * 16. ChatComposer — multiline input + active pills + send
+   * Props: { conversationId, activeSkills: [{id,name,icon}], activeAgent?: {id,name,autonomy}, onSend(text) }
+   * Returns HTML string. Wire via W.wireChatComposer(rootEl, { onSend, onSkillRemove, onAgentRemove }).
+   * Example: slot.innerHTML = W.chatComposer({...}); W.wireChatComposer(slot.querySelector('.fl-composer'), handlers);
+   */
+  W.chatComposer = function (props) {
+    props = props || {};
+    const skills = props.activeSkills || [];
+    const agent  = props.activeAgent;
+    const ph     = props.placeholder || i18n.t('chat.composer_placeholder_1', 'Escribí tu mensaje…');
+    const pills = skills.map(s => (
+      '<span class="fl-pill fl-pill--skill" data-pill-type="skill" data-pill-id="' + s.id + '">' +
+        '<span aria-hidden="true">' + (s.icon || '•') + '</span> ' + s.name +
+        '<button class="fl-pill__x" aria-label="Quitar ' + s.name + '">×</button>' +
+      '</span>'
+    )).join('');
+    const agentChip = agent ? (
+      '<span class="fl-pill fl-pill--agent" data-pill-type="agent" data-pill-id="' + agent.id + '">' +
+        '<span class="fl-pill__lvl">' + agent.autonomy + '</span> ' + agent.name +
+        '<button class="fl-pill__x" aria-label="Quitar ' + agent.name + '">×</button>' +
+      '</span>'
+    ) : '';
+    return (
+      '<div class="fl-composer" data-widget="chat-composer">' +
+      (pills || agentChip ? '<div class="fl-composer__pills">' + agentChip + pills + '</div>' : '') +
+      '<div class="fl-composer__row">' +
+        '<button class="fl-composer__attach" aria-label="Adjuntar" title="Adjuntar">📎</button>' +
+        '<textarea class="fl-composer__input" rows="1" placeholder="' + ph + '" aria-label="Mensaje"></textarea>' +
+        '<button class="btn btn-primary fl-composer__send" aria-label="Enviar (⌘Enter)">' + (i18n.t('chat.send', 'Enviar') || 'Enviar') + ' ↵</button>' +
+      '</div>' +
+      '</div>'
+    );
+  };
+  W.wireChatComposer = function (root, handlers) {
+    handlers = handlers || {};
+    const ta  = root.querySelector('.fl-composer__input');
+    const btn = root.querySelector('.fl-composer__send');
+    if (ta) {
+      ta.addEventListener('input', () => {
+        ta.style.height = 'auto';
+        ta.style.height = Math.min(200, ta.scrollHeight) + 'px';
+      });
+      ta.addEventListener('keydown', e => {
+        const mod = e.metaKey || e.ctrlKey;
+        if (e.key === 'Enter' && (mod || !e.shiftKey)) {
+          if (mod || FL.store.get('fl_enter_behavior', 'send') === 'send') {
+            e.preventDefault(); trigger();
+          }
+        }
+      });
+    }
+    if (btn) btn.addEventListener('click', trigger);
+    function trigger() {
+      const text = (ta.value || '').trim();
+      if (!text) return;
+      if (handlers.onSend) handlers.onSend(text);
+      ta.value = ''; ta.style.height = 'auto';
+    }
+    root.querySelectorAll('.fl-pill__x').forEach(x => {
+      x.addEventListener('click', () => {
+        const pill = x.closest('.fl-pill');
+        const type = pill.getAttribute('data-pill-type');
+        const id   = pill.getAttribute('data-pill-id');
+        if (type === 'skill' && handlers.onSkillRemove) handlers.onSkillRemove(id);
+        if (type === 'agent' && handlers.onAgentRemove) handlers.onAgentRemove(id);
+      });
+    });
+  };
+
+  /**
+   * 17. IterationComposer — embedded composer under a message (Iterate on this draft)
+   * Props: { messageId, originalText, onIterate(text) }
+   */
+  W.iterationComposer = function (props) {
+    props = props || {};
+    const hint = i18n.t('chat.iterate_hint', 'Refiná el draft sin perder contexto.');
+    const orig = (props.originalText || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    return (
+      '<div class="fl-iter" data-widget="iteration-composer" data-message="' + props.messageId + '">' +
+        '<div class="fl-iter__hint t-label-sm muted">↳ ' + hint + '</div>' +
+        '<textarea class="fl-iter__input" rows="3" aria-label="Iteración">' + orig + '</textarea>' +
+        /* [V3-PATCH 2026-04-19] C5 · iteration auto-feedback toggle */
+        '<label class="fl-iter__autofb t-body-sm muted"><input type="checkbox" data-iter-autofb checked/> ' +
+          'Contar como feedback (alimenta consolidation thermometer)' +
+        '</label>' +
+        '<div class="fl-iter__actions">' +
+          '<button class="btn btn-sm" data-iter-cancel>' + i18n.t('common.cancel') + '</button>' +
+          '<button class="btn btn-sm btn-primary" data-iter-go>' + i18n.t('chat.iterate_go', 'Iterar') + ' ↵</button>' +
+        '</div>' +
+      '</div>'
+    );
+  };
+  W.wireIterationComposer = function (root, handlers) {
+    handlers = handlers || {};
+    const ta = root.querySelector('.fl-iter__input');
+    const go = root.querySelector('[data-iter-go]');
+    const cancel = root.querySelector('[data-iter-cancel]');
+    if (go) go.addEventListener('click', () => { const t = (ta.value || '').trim(); if (t && handlers.onIterate) handlers.onIterate(t); });
+    if (cancel) cancel.addEventListener('click', () => { if (handlers.onCancel) handlers.onCancel(); });
+    if (ta) {
+      ta.focus();
+      ta.addEventListener('keydown', e => {
+        if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) { e.preventDefault(); go && go.click(); }
+        if (e.key === 'Escape') { cancel && cancel.click(); }
+      });
+    }
+  };
+
+  /**
+   * 18. SkillPill — clickable pill with thermometer icon + name + active ring
+   * Props: { skill: {id,name,icon,learningHeat}, active, onToggle(id) }
+   */
+  W.skillPill = function (skill, active) {
+    const heatIcon = { cold: '⚪', warm: '🟡', hot: '🔴', gold: '⭐' }[skill.learningHeat] || '⚪';
+    return (
+      '<button class="fl-sk-pill' + (active ? ' fl-sk-pill--active' : '') + '" ' +
+              'data-widget="skill-pill" data-skill="' + skill.id + '" ' +
+              'aria-pressed="' + (active ? 'true' : 'false') + '" ' +
+              'title="' + (skill.description || '').replace(/"/g, '&quot;') + '">' +
+        '<span class="fl-sk-pill__heat" aria-hidden="true">' + heatIcon + '</span>' +
+        '<span class="fl-sk-pill__icon" aria-hidden="true">' + (skill.icon || '•') + '</span>' +
+        '<span class="fl-sk-pill__name">' + skill.name + '</span>' +
+      '</button>'
+    );
+  };
+
+  /**
+   * 19. AgentChip — chip with name + autonomy badge + X
+   * Props: { agent, onRemove }
+   */
+  W.agentChip = function (agent) {
+    return (
+      '<span class="fl-ag-chip" data-widget="agent-chip" data-agent="' + agent.id + '">' +
+        '<span class="fl-ag-chip__lvl" style="background:var(--autonomy-' + (agent.autonomy || 'l0').toLowerCase() + ');">' + (agent.autonomy || 'L0') + '</span>' +
+        '<span class="fl-ag-chip__name">' + agent.name + '</span>' +
+      '</span>'
+    );
+  };
+
+  /**
+   * 20. GroundedInBlock — list of grounding sources
+   * Props: { sources: [{ sourceId, title, version, lineRange, score }] , title?, compact? }
+   */
+  W.groundedInBlock = function (props) {
+    props = props || {};
+    const sources = props.sources || [];
+    const title = props.title || i18n.t('chat.grounded_in_title', 'Grounded in');
+    if (!sources.length) {
+      return '<div class="fl-gin" data-widget="grounded-in"><h3 class="t-label-md">' + title + '</h3>' +
+        '<p class="muted t-body-sm">' + i18n.t('chat.grounded_in_empty', 'Sin fuentes todavía.') + '</p></div>';
+    }
+    const rows = sources.map(s => (
+      '<div class="fl-gin__row" data-evidence="' + s.sourceId + '">' +
+        '<div class="fl-gin__head">' +
+          '<strong class="fl-gin__title">' + (s.title || s.sourceId) + '</strong>' +
+          '<span class="fl-gin__score" title="relevance score">' + Math.round((s.score || 0) * 100) + '%</span>' +
+        '</div>' +
+        '<div class="fl-gin__meta t-body-sm muted">' +
+          '<code>' + s.sourceId + '</code>' +
+          (s.version ? ' · v' + s.version : '') +
+          (s.lineRange ? ' · ' + s.lineRange : '') +
+        '</div>' +
+        '<div class="fl-gin__bar"><div class="fl-gin__bar-fill" style="width:' + Math.round((s.score || 0) * 100) + '%"></div></div>' +
+      '</div>'
+    )).join('');
+    return '<div class="fl-gin" data-widget="grounded-in"><h3 class="t-label-md">' + title + '</h3>' + rows + '</div>';
+  };
+
+  /**
+   * 21. MessageActionsMenu — 8 actions dropdown (Copy, Iterate, Handoff, Open draft, Explain evidence, Consolidate, Feedback, Rerun)
+   * Props: { messageId, onAction(action) }
+   * Returns HTML button + hidden menu. Toggle + focus trap wired by W.wireMessageActionsMenu.
+   */
+  W.messageActionsMenu = function (props) {
+    props = props || {};
+    const actions = [
+      { id: 'copy',             label: i18n.t('message_actions.copy',             'Copiar') },
+      { id: 'iterate',          label: i18n.t('message_actions.iterate',          'Iterar') },
+      { id: 'handoff',          label: i18n.t('message_actions.handoff',          'Handoff') },
+      { id: 'open_draft',       label: i18n.t('message_actions.open_draft',       'Abrir draft') },
+      { id: 'explain_evidence', label: i18n.t('message_actions.explain_evidence', 'Explicar evidencia') },
+      { id: 'consolidate',      label: i18n.t('message_actions.consolidate',      'Consolidar') },
+      { id: 'feedback',         label: i18n.t('message_actions.feedback',         'Feedback') },
+      { id: 'rerun',            label: i18n.t('message_actions.rerun',            'Rerun') }
+    ];
+    return (
+      '<div class="fl-mam" data-widget="message-actions-menu" data-message="' + props.messageId + '">' +
+        '<button class="fl-mam__btn" aria-label="Acciones" aria-haspopup="menu" aria-expanded="false" title="Acciones">⋯</button>' +
+        '<div class="fl-mam__menu" role="menu" hidden>' +
+          actions.map(a => '<button class="fl-mam__item" role="menuitem" data-action="' + a.id + '">' + a.label + '</button>').join('') +
+        '</div>' +
+      '</div>'
+    );
+  };
+  W.wireMessageActionsMenu = function (root, handlers) {
+    handlers = handlers || {};
+    root.querySelectorAll('.fl-mam').forEach(m => {
+      const btn  = m.querySelector('.fl-mam__btn');
+      const menu = m.querySelector('.fl-mam__menu');
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const open = !menu.hidden;
+        // close all others
+        root.querySelectorAll('.fl-mam__menu').forEach(x => x.hidden = true);
+        root.querySelectorAll('.fl-mam__btn').forEach(x => x.setAttribute('aria-expanded', 'false'));
+        if (!open) { menu.hidden = false; btn.setAttribute('aria-expanded', 'true'); }
+      });
+      menu.querySelectorAll('.fl-mam__item').forEach(it => {
+        it.addEventListener('click', e => {
+          e.stopPropagation();
+          menu.hidden = true; btn.setAttribute('aria-expanded', 'false');
+          if (handlers.onAction) handlers.onAction(m.getAttribute('data-message'), it.getAttribute('data-action'));
+        });
+      });
+    });
+    // click outside closes
+    document.addEventListener('click', () => {
+      root.querySelectorAll('.fl-mam__menu').forEach(x => x.hidden = true);
+      root.querySelectorAll('.fl-mam__btn').forEach(x => x.setAttribute('aria-expanded', 'false'));
+    });
+  };
+
+  /**
+   * 22. PatternBadge — learned / gold / none / sealed indicator on messages or skill rows
+   * Props: { kind: 'learned'|'gold'|'none'|'sealed', count?, rating? }
+   */
+  W.patternBadge = function (props) {
+    props = props || {};
+    if (props.kind === 'none') {
+      return '<span class="fl-pb fl-pb--none" data-widget="pattern-badge" title="' + i18n.t('pattern.none', 'Sin patrón todavía') + '">○ ' + i18n.t('pattern.none', 'Sin patrón') + '</span>';
+    }
+    if (props.kind === 'learned') {
+      const c = props.count || 0;
+      return '<span class="fl-pb fl-pb--learned" data-widget="pattern-badge" title="' + i18n.t('pattern.learned', 'Pattern learned') + ' · ' + c + '">✦ ' + i18n.t('pattern.learned_short', 'Learned') + ' · ' + c + '</span>';
+    }
+    if (props.kind === 'gold') {
+      const r = props.rating || 0;
+      return '<span class="fl-pb fl-pb--gold" data-widget="pattern-badge" title="' + i18n.t('pattern.gold', 'Gold sample') + ' · ' + r + '/10">★ Gold · ' + r + '/10</span>';
+    }
+    if (props.kind === 'sealed') {
+      return '<span class="fl-pb fl-pb--sealed" data-widget="pattern-badge" title="Base sellada">🔒 Sealed</span>';
+    }
+    return '';
+  };
+
+  /**
+   * 23. VoiceOfCustomerCard — embedded quote card with sentiment
+   * Props: { voc: { quote, sentiment, sourceCustomer, sourceCallId, date } }
+   */
+  W.voiceOfCustomerCard = function (voc) {
+    if (!voc) return '';
+    const sentimentIcon = { positive: '☺', neutral: '◯', negative: '✕' }[voc.sentiment] || '◯';
+    const sentimentCls = 'fl-voc--' + (voc.sentiment || 'neutral');
+    return (
+      '<figure class="fl-voc ' + sentimentCls + '" data-widget="voc-card">' +
+        '<div class="fl-voc__head">' +
+          '<span class="fl-voc__sentiment" aria-hidden="true">' + sentimentIcon + '</span>' +
+          '<span class="t-label-sm muted">' + i18n.t('voc.title', 'Voice of customer') + '</span>' +
+        '</div>' +
+        '<blockquote class="fl-voc__quote">&ldquo;' + voc.quote + '&rdquo;</blockquote>' +
+        '<figcaption class="fl-voc__src t-body-sm muted">— ' + voc.sourceCustomer + ' · ' + voc.date + (voc.sourceCallId ? ' · <code>' + voc.sourceCallId + '</code>' : '') + '</figcaption>' +
+      '</figure>'
+    );
+  };
+
+  /**
+   * 24. SuggestGrid — 2x2 grid of contextual suggestions
+   * Props: { items: [{id, icon, title, hint}], onPick(id) }
+   */
+  W.suggestGrid = function (items, opts) {
+    opts = opts || {};
+    return (
+      '<div class="fl-sg" data-widget="suggest-grid" role="list">' +
+      (items || []).map(it => (
+        '<button class="fl-sg__item" role="listitem" data-suggest="' + it.id + '">' +
+          '<div class="fl-sg__icon" aria-hidden="true">' + (it.icon || '◆') + '</div>' +
+          '<div class="fl-sg__body">' +
+            '<div class="fl-sg__title">' + it.title + '</div>' +
+            '<div class="fl-sg__hint t-body-sm muted">' + (it.hint || '') + '</div>' +
+          '</div>' +
+        '</button>'
+      )).join('') +
+      '</div>'
+    );
+  };
+
+  /**
+   * 25. SLABar — horizontal progress bar with breach prediction coloring
+   * Props: { target: ms, current: ms, label }
+   */
+  W.slaBar = function (props) {
+    props = props || {};
+    const target = props.target || 300, current = props.current || 0;
+    /* [V3-PATCH 2026-04-19] C7 · sustained-window indicator (single-sample vs 7d sustained per A1 §8) */
+    const sustainedDays = props.sustainedDays != null ? props.sustainedDays : 0;
+    const sustainedThreshold = props.sustainedThreshold || 7;
+    const pct = Math.min(100, Math.round((current / target) * 100));
+    let state = 'ok';
+    if (current >= target && sustainedDays >= sustainedThreshold) state = 'breach';
+    else if (current >= target) state = 'warn';
+    else if (current >= target * 0.95) state = 'warn';
+    const label = props.label || i18n.t('chat.sla_p95_label', 'SLA p95');
+    return (
+      '<div class="fl-sla fl-sla--' + state + '" data-widget="sla-bar">' +
+        '<div class="fl-sla__head">' +
+          '<span class="t-label-sm muted">' + label + '</span>' +
+          '<span class="fl-sla__num"><strong>' + current + 'ms</strong> / ' + target + 'ms</span>' +
+        '</div>' +
+        '<div class="fl-sla__track"><div class="fl-sla__fill" style="width:' + pct + '%"></div><div class="fl-sla__target" style="left:100%"></div></div>' +
+        '<div class="fl-sla__sustain t-body-sm muted" style="margin-top:4px;">' +
+          'Sostenido <strong>' + sustainedDays + 'd</strong> / ' + sustainedThreshold + 'd ' +
+          '<span title="A1 SPEC §8: pivote-out trigger requires 7d sustained breach">' + (sustainedDays >= sustainedThreshold ? '⚠ pivote-out trigger' : '· debajo del umbral pivote') + '</span>' +
+        '</div>' +
+        (state !== 'ok' ? '<div class="fl-sla__warn t-body-sm">⚠ ' + i18n.t('chat.sla_p95_breach_warn', 'Cerca del límite — monitorear') + '</div>' : '') +
+      '</div>'
+    );
+  };
+
+  /**
+   * V3-PATCH 2026-04-19 · 27. AI Assist Toolbar — inline preset actions on a draft body
+   * Props: { messageId or draftId, presets?: ['rephrase','shorten','formalize','translate','factcheck','compliance'] }
+   * Returns HTML. Wire via W.wireAiAssistToolbar(rootEl, { onPreset, onOpenChat }).
+   */
+  W.aiAssistToolbar = function (props) {
+    props = props || {};
+    const id = props.draftId || props.messageId || 'unknown';
+    const presets = props.presets || ['rephrase','shorten','formalize','translate','factcheck','compliance'];
+    const labels = { rephrase:'Reformular', shorten:'Acortar', formalize:'Formalizar', translate:'Traducir', factcheck:'Fact-check', compliance:'Compliance' };
+    const icons  = { rephrase:'✎', shorten:'⇲', formalize:'⊢', translate:'🌐', factcheck:'✓', compliance:'⚖' };
+    return (
+      '<div class="fl-aia" data-widget="ai-assist-toolbar" data-target="' + id + '">' +
+        '<div class="fl-aia__head">' +
+          '<span class="t-label-sm muted">✨ AI assist</span>' +
+        '</div>' +
+        '<div class="fl-aia__row">' +
+          presets.map(p => '<button class="fl-aia__btn" data-aia="' + p + '" title="' + labels[p] + '"><span aria-hidden="true">' + icons[p] + '</span> ' + labels[p] + '</button>').join('') +
+          '<button class="fl-aia__btn fl-aia__btn--escape" data-aia="open-chat" title="Pedile en lenguaje natural">/ AI</button>' +
+        '</div>' +
+        '<div class="fl-aia__result" hidden></div>' +
+      '</div>'
+    );
+  };
+  W.wireAiAssistToolbar = function (root, handlers) {
+    handlers = handlers || {};
+    const result = root.querySelector('.fl-aia__result');
+    root.querySelectorAll('[data-aia]').forEach(b => {
+      b.addEventListener('click', () => {
+        const action = b.getAttribute('data-aia');
+        if (action === 'open-chat') { if (handlers.onOpenChat) handlers.onOpenChat(); return; }
+        if (handlers.onPreset) {
+          const proposed = handlers.onPreset(action);
+          if (proposed) showResult(result, action, proposed);
+        } else {
+          showResult(result, action, '(simulación) propuesta de "' + action + '" — diff visible cuando se conecte LLM real');
+        }
+      });
+    });
+  };
+  function showResult(slot, action, content) {
+    slot.hidden = false;
+    slot.innerHTML = (
+      '<div class="fl-aia__result-head"><span class="t-label-sm" style="color:var(--accent-primary);">Propuesta · ' + action + '</span>' +
+        '<button class="btn btn-sm btn-primary" data-aia-accept>✓ Aceptar</button>' +
+        '<button class="btn btn-sm" data-aia-reject>Rechazar</button>' +
+      '</div>' +
+      '<div class="fl-aia__result-body">' + content + '</div>'
+    );
+    slot.querySelector('[data-aia-accept]').addEventListener('click', () => {
+      slot.hidden = true; slot.innerHTML = '';
+      window.__faberloom.bus.emit('toast', { kind:'success', message:'Propuesta aceptada · draft actualizado' });
+    });
+    slot.querySelector('[data-aia-reject]').addEventListener('click', () => {
+      slot.hidden = true; slot.innerHTML = '';
+    });
+  }
+
+  /**
+   * V3-PATCH 2026-04-19 · 28. AI Assist Chat — embedded mini-chat under a draft body
+   * Props: { contextLabel: 'Draft dr_001' }
+   */
+  W.aiAssistChat = function (props) {
+    props = props || {};
+    return (
+      '<div class="fl-aiac" data-widget="ai-assist-chat">' +
+        '<div class="fl-aiac__head"><span class="t-label-sm" style="color:var(--accent-primary);">/ AI assist · ' + (props.contextLabel || 'draft') + '</span>' +
+          '<button class="fl-aiac__close" aria-label="Cerrar">×</button>' +
+        '</div>' +
+        '<div class="fl-aiac__thread"></div>' +
+        '<div class="fl-aiac__row">' +
+          '<input class="input fl-aiac__input" placeholder="Pedile lo que querés (ej: hacelo más telegráfico)" aria-label="AI prompt"/>' +
+          '<button class="btn btn-sm btn-primary fl-aiac__send">↵</button>' +
+        '</div>' +
+      '</div>'
+    );
+  };
+  W.wireAiAssistChat = function (root, handlers) {
+    handlers = handlers || {};
+    const input = root.querySelector('.fl-aiac__input');
+    const send  = root.querySelector('.fl-aiac__send');
+    const close = root.querySelector('.fl-aiac__close');
+    const thread = root.querySelector('.fl-aiac__thread');
+    function fire() {
+      const text = (input.value || '').trim();
+      if (!text) return;
+      thread.insertAdjacentHTML('beforeend', '<div class="fl-aiac__msg fl-aiac__msg--u">' + text + '</div>');
+      input.value = '';
+      setTimeout(() => {
+        const reply = handlers.onPrompt ? handlers.onPrompt(text) : '(simulación) procesando "' + text + '" — propuesta de cambio visible cuando se conecte LLM';
+        thread.insertAdjacentHTML('beforeend', '<div class="fl-aiac__msg fl-aiac__msg--a">' + reply + '</div>');
+        thread.scrollTop = thread.scrollHeight;
+      }, 350);
+    }
+    if (send) send.addEventListener('click', fire);
+    if (input) input.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); fire(); } });
+    if (close) close.addEventListener('click', () => { if (handlers.onClose) handlers.onClose(); });
+  };
+
+  /**
+   * V3-PATCH 2026-04-19 · 29. Chat thread primitive (reusable in bandeja-detail / skill-studio / agent-console)
+   * Props: { conversationId, contextLabel, scope: 'item'|'sandbox'|'debug' }
+   * Returns HTML for a compact thread + composer.
+   */
+  W.chatThread = function (props) {
+    props = props || {};
+    const messages = props.messages || (window.__faberloom.mock.messages || []).filter(m => m.conversationId === props.conversationId);
+    const skills = props.activeSkills || [];
+    const composer = W.chatComposer({ conversationId: props.conversationId, activeSkills: skills, placeholder: props.placeholder || 'Mensaje al agente…' });
+    return (
+      '<div class="fl-cthread" data-widget="chat-thread" data-scope="' + (props.scope || 'embed') + '">' +
+        '<div class="fl-cthread__head"><span class="t-label-sm muted">💬 ' + (props.contextLabel || 'Thread') + '</span></div>' +
+        '<div class="fl-cthread__list">' +
+          (messages.length ? messages.map(m => (
+            '<div class="fl-cthread__msg fl-cthread__msg--' + m.role + '">' +
+              '<div class="fl-cthread__sender t-label-sm">' + (m.role === 'user' ? 'Vos' : 'Agente') + ' · ' + (m.timestamp || '').slice(11, 16) + '</div>' +
+              '<div class="fl-cthread__body">' + String(m.content || '').replace(/\n/g, '<br>') + '</div>' +
+            '</div>'
+          )).join('') : '<p class="muted t-body-sm">Sin mensajes en este thread todavía.</p>') +
+        '</div>' +
+        '<div class="fl-cthread__composer">' + composer + '</div>' +
+      '</div>'
+    );
+  };
+  W.wireChatThread = function (root, handlers) {
+    handlers = handlers || {};
+    const composer = root.querySelector('.fl-composer');
+    if (composer) {
+      W.wireChatComposer(composer, {
+        onSend: text => { if (handlers.onSend) handlers.onSend(text); }
+      });
+    }
+  };
+
+  /**
+   * V3.5-PATCH 2026-04-19 · 30. AgentSpec Wizard — 5-step modal for create/edit/clone
+   * Maps to A4 P1 7 fields: trigger_word, autonomy_ceiling, escalation_policy,
+   *                          kb_refs, state_machine, events, learning_consolidation
+   * Props: { mode: 'create'|'edit'|'clone', initial?: AgentSpecLike, onSubmit(spec) }
+   */
+  W.openAgentSpecWizard = function (props) {
+    props = props || {};
+    const mode = props.mode || 'create';
+    const initial = props.initial || {};
+    const titlePrefix = { create:'＋ Crear agente', edit:'✎ Editar AgentSpec', clone:'⎘ Clonar agente' }[mode];
+    let step = 1;
+    const draft = Object.assign({
+      name:'', description:'', triggerWord:'/nuevo', triggerKind:'word', tier:'experimental',
+      businessEntityScope:'all', skills:[], kbRefs:[], connectorBindings:[],
+      events:['manual_trigger'], stateMachine:'default_v1',
+      autonomyCeiling:'L1', escalationPolicy:'monto>500k → owner',
+      learningConsolidation:'manual_only'
+    }, initial);
+    if (mode === 'clone') { draft.name = (draft.name || 'Agente') + ' (copia)'; draft.id = null; }
+
+    function r() {
+      const body = step === 1 ? renderStep1() : step === 2 ? renderStep2() : step === 3 ? renderStep3() : step === 4 ? renderStep4() : renderStep5();
+      const back = step > 1 ? '<button class="btn" data-aspw-act="back">← Atrás</button>' : '';
+      const nextLabel = step === 5 ? (mode === 'edit' ? 'Publicar nueva versión' : mode === 'clone' ? 'Crear como nuevo' : 'Crear agente') : 'Siguiente →';
+      W.openModal(
+        '<h2 id="fl-modal-title" class="t-heading-lg" style="margin:0 0 var(--space-2);">' + titlePrefix + ' · paso ' + step + ' / 5</h2>' +
+        '<div class="t-body-sm muted" style="margin-bottom:var(--space-3);">' + stepLabel(step) + '</div>' +
+        '<div class="aspw-progress"><div class="aspw-progress-fill" style="width:' + (step * 20) + '%"></div></div>' +
+        '<div class="aspw-body">' + body + '</div>' +
+        '<div class="aspw-foot">' +
+          '<button class="btn" data-aspw-act="cancel">Cancelar</button>' +
+          back +
+          '<button class="btn btn-primary" data-aspw-act="next">' + nextLabel + '</button>' +
+        '</div>',
+        { width: 680 }
+      );
+      wire();
+    }
+
+    function stepLabel(s) {
+      return ['','Identidad básica · A4 AgentSpec.trigger_word + tier','Skills · qué skills usa el agente','KB refs + Connectors · contexto y herramientas','State machine + Events · qué dispara al agente','Guardrails · autonomy_ceiling + escalation_policy'][s];
+    }
+
+    function renderStep1() {
+      return (
+        '<form class="aspw-form">' +
+          '<label><span class="t-label-sm">Nombre</span><input class="input" data-fld="name" value="' + esc(draft.name) + '" placeholder="Cotizador MX/LATAM" /></label>' +
+          '<label><span class="t-label-sm">Descripción</span><textarea class="textarea" data-fld="description" rows="2" placeholder="Genera cotizaciones B2B con evidencia + retención">' + esc(draft.description) + '</textarea></label>' +
+          '<div class="grid-2">' +
+            '<label><span class="t-label-sm">Trigger word / event</span><input class="input" data-fld="triggerWord" value="' + esc(draft.triggerWord) + '" placeholder="/cotizar"/></label>' +
+            '<label><span class="t-label-sm">Trigger kind</span><select class="select" data-fld="triggerKind">' +
+              ['word','event','schedule'].map(k => '<option value="' + k + '"' + (draft.triggerKind === k ? ' selected' : '') + '>' + k + '</option>').join('') +
+            '</select></label>' +
+          '</div>' +
+          '<div class="grid-2">' +
+            '<label><span class="t-label-sm">Tier</span><select class="select" data-fld="tier">' +
+              ['demo-critical','hot','cold','internal','experimental'].map(t => '<option value="' + t + '"' + (draft.tier === t ? ' selected' : '') + '>' + t + '</option>').join('') +
+            '</select></label>' +
+            '<label><span class="t-label-sm">Business entity scope</span><select class="select" data-fld="businessEntityScope">' +
+              ['all','customer','supplier','internal'].map(t => '<option value="' + t + '"' + (draft.businessEntityScope === t ? ' selected' : '') + '>' + t + '</option>').join('') +
+            '</select></label>' +
+          '</div>' +
+        '</form>'
+      );
+    }
+
+    function renderStep2() {
+      const sk = (window.__faberloom.mock.availableSkillsForChat || []);
+      return (
+        '<div class="t-body-sm muted">Seleccioná los skills que el agente usará. Podés agregar más después.</div>' +
+        '<ul class="aspw-skills">' +
+        sk.map(s => (
+          '<li class="aspw-skill-row">' +
+            '<label><input type="checkbox" data-skill="' + s.id + '"' + (draft.skills.indexOf(s.id) >= 0 ? ' checked' : '') + '/> ' +
+            '<span class="aspw-skill-name">' + s.icon + ' <strong>' + s.name + '</strong></span> ' +
+            '<span class="muted t-body-sm">' + s.description + '</span></label>' +
+          '</li>'
+        )).join('') +
+        '</ul>'
+      );
+    }
+
+    function renderStep3() {
+      const allKb = ['ENT_PROD_MAN','POL_MX_001','price_table_2026','stock_lookup','crm_schema','triage_playbook','sales_log','POL_PE_001','POL_CO_001','astm_matcher'];
+      const allConnectors = (window.__faberloom.mock.connectors || []);
+      return (
+        '<div class="grid-2" style="gap:var(--space-4);">' +
+          '<div><span class="t-label-md">KB refs (' + draft.kbRefs.length + ' selected)</span>' +
+            '<ul class="aspw-checks">' + allKb.map(k => '<li><label><input type="checkbox" data-kb="' + k + '"' + (draft.kbRefs.indexOf(k) >= 0 ? ' checked' : '') + '/> <code>' + k + '</code></label></li>').join('') + '</ul>' +
+          '</div>' +
+          '<div><span class="t-label-md">Connectors (' + draft.connectorBindings.length + ')</span>' +
+            '<ul class="aspw-checks">' + allConnectors.map(c => '<li><label><input type="checkbox" data-cn="' + c.id + '"' + (draft.connectorBindings.indexOf(c.id) >= 0 ? ' checked' : '') + (c.status === 'planned' ? ' disabled' : '') + '/> ' + c.name + ' <span class="muted t-body-sm">(' + c.status + ')</span></label></li>').join('') + '</ul>' +
+          '</div>' +
+        '</div>'
+      );
+    }
+
+    function renderStep4() {
+      const allEvents = ['manual_trigger','rfq_received','followup_due','stock_alert','lead_inbound','quote_unanswered_7d','daily_cron','ticket_inbound','deal_stage_change','new_customer_signup','escalation_received'];
+      return (
+        '<label><span class="t-label-sm">State machine template</span><select class="select" data-fld="stateMachine">' +
+          '<option value="default_v1"' + (draft.stateMachine === 'default_v1' ? ' selected' : '') + '>Default v1 (drafting → awaiting_approval → approved → executing → completed + branches)</option>' +
+          '<option value="simple"' + (draft.stateMachine === 'simple' ? ' selected' : '') + '>Simple (drafting → completed)</option>' +
+          '<option value="custom"' + (draft.stateMachine === 'custom' ? ' selected' : '') + '>Custom (configurar después)</option>' +
+        '</select></label>' +
+        '<div style="margin-top:var(--space-3);"><span class="t-label-md">Events que disparan al agente</span>' +
+          '<ul class="aspw-checks">' + allEvents.map(e => '<li><label><input type="checkbox" data-ev="' + e + '"' + (draft.events.indexOf(e) >= 0 ? ' checked' : '') + '/> <code>' + e + '</code></label></li>').join('') + '</ul>' +
+        '</div>'
+      );
+    }
+
+    function renderStep5() {
+      return (
+        '<form class="aspw-form">' +
+          '<label><span class="t-label-sm">Autonomy ceiling (máximo permitido — agente arranca en L0 SHADOW)</span><select class="select" data-fld="autonomyCeiling">' +
+            ['L0','L1','L2','L3','L4'].map(L => '<option value="' + L + '"' + (draft.autonomyCeiling === L ? ' selected' : '') + '>' + L + '</option>').join('') +
+          '</select></label>' +
+          '<label><span class="t-label-sm">Escalation policy (texto libre — describí condiciones de escalación)</span><textarea class="textarea" data-fld="escalationPolicy" rows="3">' + esc(draft.escalationPolicy) + '</textarea></label>' +
+          '<label><span class="t-label-sm">Learning consolidation</span><select class="select" data-fld="learningConsolidation">' +
+            ['manual_only','auto_with_review','auto_no_review'].map(o => '<option value="' + o + '"' + (draft.learningConsolidation === o ? ' selected' : '') + '>' + o + '</option>').join('') +
+          '</select></label>' +
+          '<div class="aspw-summary"><span class="t-label-sm muted">Preview de creación</span>' +
+            '<dl class="aspw-dl">' +
+            '<dt>Nombre</dt><dd>' + esc(draft.name || '(vacío)') + '</dd>' +
+            '<dt>Tier</dt><dd>' + draft.tier + '</dd>' +
+            '<dt>Skills</dt><dd>' + draft.skills.length + '</dd>' +
+            '<dt>KB refs</dt><dd>' + draft.kbRefs.length + '</dd>' +
+            '<dt>Connectors</dt><dd>' + draft.connectorBindings.length + '</dd>' +
+            '<dt>Events</dt><dd>' + draft.events.length + '</dd>' +
+            '<dt>Autonomy ceiling</dt><dd>' + draft.autonomyCeiling + '</dd>' +
+            '<dt>Estado inicial</dt><dd>L0 SHADOW · status=shadow</dd>' +
+            '</dl>' +
+          '</div>' +
+        '</form>'
+      );
+    }
+
+    function wire() {
+      document.querySelector('[data-aspw-act="cancel"]').addEventListener('click', () => W.closeModal());
+      const back = document.querySelector('[data-aspw-act="back"]'); if (back) back.addEventListener('click', () => { capture(); step--; r(); });
+      document.querySelector('[data-aspw-act="next"]').addEventListener('click', () => {
+        capture();
+        if (step === 5) { commit(); return; }
+        if (step === 1 && !draft.name) { window.__faberloom.bus.emit('toast', { kind:'warn', message:'Nombre obligatorio' }); return; }
+        step++; r();
+      });
+      document.querySelectorAll('[data-fld]').forEach(el => {
+        el.addEventListener('input', () => { draft[el.getAttribute('data-fld')] = el.value; });
+      });
+    }
+
+    function capture() {
+      document.querySelectorAll('[data-fld]').forEach(el => { draft[el.getAttribute('data-fld')] = el.value; });
+      document.querySelectorAll('[data-skill]').forEach(c => {
+        const id = c.getAttribute('data-skill');
+        const idx = draft.skills.indexOf(id);
+        if (c.checked && idx < 0) draft.skills.push(id);
+        if (!c.checked && idx >= 0) draft.skills.splice(idx, 1);
+      });
+      document.querySelectorAll('[data-kb]').forEach(c => {
+        const id = c.getAttribute('data-kb');
+        const idx = draft.kbRefs.indexOf(id);
+        if (c.checked && idx < 0) draft.kbRefs.push(id);
+        if (!c.checked && idx >= 0) draft.kbRefs.splice(idx, 1);
+      });
+      document.querySelectorAll('[data-cn]').forEach(c => {
+        const id = c.getAttribute('data-cn');
+        const idx = draft.connectorBindings.indexOf(id);
+        if (c.checked && idx < 0) draft.connectorBindings.push(id);
+        if (!c.checked && idx >= 0) draft.connectorBindings.splice(idx, 1);
+      });
+      document.querySelectorAll('[data-ev]').forEach(c => {
+        const id = c.getAttribute('data-ev');
+        const idx = draft.events.indexOf(id);
+        if (c.checked && idx < 0) draft.events.push(id);
+        if (!c.checked && idx >= 0) draft.events.splice(idx, 1);
+      });
+    }
+
+    function commit() {
+      W.closeModal();
+      if (props.onSubmit) props.onSubmit(draft);
+    }
+
+    function esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;'); }
+
+    r();
+  };
+
+  /**
+   * 26. Sparkline — tiny inline chart for runs-last-7d data
+   * Props: array of 7 numbers. Returns inline SVG.
+   */
+  W.sparkline = function (data, opts) {
+    opts = opts || {};
+    data = (data || []).slice(0, 14);
+    if (!data.length) return '';
+    const max = Math.max(1, Math.max.apply(null, data));
+    const w = opts.width || 60, h = opts.height || 16, step = data.length > 1 ? w / (data.length - 1) : 0;
+    const pts = data.map((v, i) => i * step + ',' + (h - (v / max) * h)).join(' ');
+    return '<svg class="fl-spark" width="' + w + '" height="' + h + '" viewBox="0 0 ' + w + ' ' + h + '" aria-hidden="true"><polyline fill="none" stroke="currentColor" stroke-width="1.5" points="' + pts + '"/></svg>';
+  };
+
+  /* ═══════════════════════════════════════════════════════════════
+     [V4-PATCH 2026-04-22] · F1 widgets
+     SealedOpenBadge · AuthoritySlider · CircuitBreakerLight ·
+     ColdStartBanner · PendingCEOFlag · DataResidencyRow · HaStatusPill
+     Fuentes: ENT_PLAT_LLM_ROUTING v2.0 · SPEC_AGENT_COMPOSITION §6 ·
+              SPEC_SKILL_COMPOSITION §7 · DEC-006/007/008
+     ═══════════════════════════════════════════════════════════════ */
+
+  /* ─── V4.1 Sealed/Open badge (Skill & Agent identity) ─── */
+  W.sealedOpenBadge = function (origin, opts) {
+    opts = opts || {};
+    const o = (origin === 'open') ? 'open' : 'sealed';
+    const tip = (o === 'sealed')
+      ? 'Sealed · FaberLoom-made · base_content inmutable · canal de updates activo'
+      : 'Open · Fork editable · 100% del tenant · sin canal de updates';
+    const icon = (o === 'sealed') ? '🔒' : '🔓';
+    const lbl = (o === 'sealed') ? 'Sealed' : 'Open';
+    return (
+      '<span class="fl-sealopen fl-sealopen--' + o + '" ' +
+      'data-origin="' + o + '" ' +
+      'role="status" aria-label="' + tip + '" title="' + tip + '"' +
+      (opts.compact ? ' data-compact="1"' : '') + '>' +
+      '<span aria-hidden="true">' + icon + '</span>' +
+      '<span>' + lbl + '</span>' +
+      '</span>'
+    );
+  };
+
+  /* ─── V4.2 Fork-to-Open CTA (only shows for origin=sealed) ─── */
+  W.forkToOpenCta = function (entityId, entityType, opts) {
+    opts = opts || {};
+    return (
+      '<button type="button" class="btn btn-ghost btn-sm fl-fork-cta" ' +
+      'data-action="fork-to-open" ' +
+      'data-entity-type="' + entityType + '" ' +
+      'data-entity-id="' + entityId + '" ' +
+      'title="Crear fork Open · 100% editable · pierde canal de updates">' +
+      '<span aria-hidden="true">⑂</span> Fork a Open' +
+      '</button>'
+    );
+  };
+
+  W.wireForkCta = function (root, handler) {
+    (root || document).querySelectorAll('[data-action="fork-to-open"]').forEach(btn => {
+      if (btn._wired) return; btn._wired = true;
+      btn.addEventListener('click', () => {
+        const msg = 'Fork creará copia Open editable de ' + btn.getAttribute('data-entity-id') + '.\n\n' +
+                    '⚠ Consecuencias:\n' +
+                    '• manual_overlay = null (resetea customizaciones)\n' +
+                    '• bindings copiados\n' +
+                    '• pierde canal de updates FaberLoom\n' +
+                    '• Sealed base queda intacto\n\n' +
+                    '¿Continuar?';
+        if (!confirm(msg)) return;
+        if (typeof handler === 'function') handler(btn.getAttribute('data-entity-id'), btn.getAttribute('data-entity-type'));
+        FL.bus.emit('toast', { kind: 'success', message: 'Fork Open creado · editable 100%' });
+      });
+    });
+  };
+
+  /* ─── V4.3 Authority slider (SEÑALA / PROPONE / EJEC·aprob / EJEC·solo) ─── */
+  W.authoritySlider = function (currentMode, ladder, opts) {
+    opts = opts || {};
+    const matrix = (FL.mock && FL.mock.authorityMatrix) || {};
+    const allowed = (matrix.ladderAllowedAuthorities && matrix.ladderAllowedAuthorities[ladder]) || [];
+    const modes = matrix.modes || [
+      { key:'SENALA',                 shortLabel:'Signal' },
+      { key:'PROPONE',                shortLabel:'Draft' },
+      { key:'EJECUTA_CON_APROBACION', shortLabel:'Exec+approve' },
+      { key:'EJECUTA_SOLO',           shortLabel:'Exec solo' }
+    ];
+    const segments = modes.map(m => {
+      const isAllowed = allowed.indexOf(m.key) >= 0;
+      const isActive  = m.key === currentMode;
+      return (
+        '<button type="button" class="fl-auth-seg' +
+        (isActive ? ' fl-auth-seg--active' : '') +
+        (!isAllowed ? ' fl-auth-seg--disabled' : '') + '" ' +
+        'data-auth-key="' + m.key + '" ' +
+        (isAllowed ? '' : 'disabled aria-disabled="true" ') +
+        'title="' + (m.description || '') + (isAllowed ? '' : ' · no permitido en ' + ladder) + '">' +
+        '<span class="fl-auth-seg__dot" data-auth="' + m.key + '" aria-hidden="true"></span>' +
+        '<span>' + m.shortLabel + '</span>' +
+        '</button>'
+      );
+    }).join('');
+    return (
+      '<div class="fl-auth" role="radiogroup" aria-label="Authority mode · L=' + ladder + '">' +
+      '<div class="fl-auth__label t-label-sm muted">Authority · eje separado de Ladder</div>' +
+      '<div class="fl-auth__seg-row">' + segments + '</div>' +
+      (matrix.sacredRule ? '<div class="fl-auth__sacred t-body-sm"><strong>Regla sagrada:</strong> ' + matrix.sacredRule + '</div>' : '') +
+      '</div>'
+    );
+  };
+
+  W.wireAuthoritySlider = function (root, onChange) {
+    (root || document).querySelectorAll('.fl-auth .fl-auth-seg').forEach(btn => {
+      if (btn._wired) return; btn._wired = true;
+      btn.addEventListener('click', () => {
+        if (btn.disabled) return;
+        const k = btn.getAttribute('data-auth-key');
+        const group = btn.closest('.fl-auth__seg-row');
+        if (group) group.querySelectorAll('.fl-auth-seg').forEach(b => b.classList.toggle('fl-auth-seg--active', b === btn));
+        if (typeof onChange === 'function') onChange(k);
+      });
+    });
+  };
+
+  /* ─── V4.4 Circuit Breaker light (2-level: provider + model) ─── */
+  W.circuitBreakerLight = function (state, opts) {
+    opts = opts || {};
+    const st = (state === 'open' || state === 'half_open') ? state : 'closed';
+    const cfg = {
+      closed:    { dot:'●',  lbl:'OK',            cls:'fl-cb--closed',    tip:'Cerrado · tráfico normal · err<10% p99<5s' },
+      half_open: { dot:'◐',  lbl:'Probing',       cls:'fl-cb--half',      tip:'Half-open · probando recuperación tras 60s' },
+      open:      { dot:'◯',  lbl:'Open',          cls:'fl-cb--open',      tip:'Tripped · err>50% 20req o p99>15s · reintentar en 60s' }
+    };
+    const c = cfg[st];
+    return (
+      '<span class="fl-cb ' + c.cls + '" role="status" title="' + c.tip + '" aria-label="Circuit breaker ' + st + '">' +
+      '<span class="fl-cb__dot" aria-hidden="true">' + c.dot + '</span>' +
+      '<span class="fl-cb__lbl">' + c.lbl + '</span>' +
+      '</span>'
+    );
+  };
+
+  /* ─── V4.5 Cold Start Banner (30 days exploración manual) ─── */
+  W.coldStartBanner = function (cs, opts) {
+    opts = opts || {};
+    if (!cs || !cs.enabled) return '';
+    const pct = Math.round(((cs.daysElapsed || 0) / (cs.daysTotal || 30)) * 100);
+    return (
+      '<div class="fl-coldstart" role="status" aria-live="polite">' +
+      '<div class="fl-coldstart__icon" aria-hidden="true">🧊</div>' +
+      '<div class="fl-coldstart__body">' +
+      '<div class="fl-coldstart__title t-label-md"><strong>Cold Start · exploración manual</strong> · Día ' + cs.daysElapsed + ' de ' + cs.daysTotal + '</div>' +
+      '<div class="fl-coldstart__sub t-body-sm muted">' +
+      'Durante los primeros ' + cs.daysTotal + ' días, CEO revisa manualmente ≥1 sample/día. ' +
+      'Después, el admin del tenant puede editar tenant_model_allowlist.' +
+      '</div>' +
+      '<div class="fl-coldstart__progress" aria-hidden="true">' +
+      '<div class="fl-coldstart__bar" style="width:' + pct + '%"></div>' +
+      '</div>' +
+      '<div class="fl-coldstart__meta t-caption muted">' +
+      '· Samples revisadas hoy: ' + (cs.samplesReviewedToday || 0) +
+      ' · Total: ' + (cs.samplesReviewedTotal || 0) +
+      ' · Faltan ' + cs.daysRemaining + ' días</div>' +
+      '</div>' +
+      '</div>'
+    );
+  };
+
+  /* ─── V4.6 Pending CEO flag (Q1-Q18 placeholders) ─── */
+  W.pendingCeoFlag = function (qId, pendingText, suggestedAnswer) {
+    const q = qId || '?';
+    const tip = 'Q' + q.replace(/^Q/,'') + ' pending CEO · ' + (pendingText || '') +
+                (suggestedAnswer ? ' · Sugerido: ' + suggestedAnswer : '');
+    return (
+      '<span class="fl-pending-ceo" role="status" aria-label="' + tip + '" title="' + tip + '" data-q="' + q + '">' +
+      '<span aria-hidden="true">⚠</span>' +
+      '<span>' + q + '</span>' +
+      '</span>'
+    );
+  };
+
+  /* ─── V4.7 Data Residency row (allowlist display · read w/edit for CEO) ─── */
+  W.dataResidencyRow = function (row, opts) {
+    opts = opts || {};
+    const blocked = (row.blockedRegions || []).join(', ') || '—';
+    const providers = (row.allowedProviders || []).join(' · ') || '—';
+    return (
+      '<tr class="fl-dr-row" data-classification="' + row.dataClassification + '">' +
+      '<td><span class="chip">' + row.dataClassification + '</span></td>' +
+      '<td class="t-mono" style="font-size:11px;">' + providers + '</td>' +
+      '<td class="t-mono" style="font-size:11px;color:var(--status-danger);">' + blocked + '</td>' +
+      '<td class="t-body-sm muted">' + (row.reasonDenied || '—') + '</td>' +
+      '<td class="t-caption muted">' + (row.updatedBy || '') + ' · ' + (row.updatedAt || '').slice(0,10) + '</td>' +
+      '<td>' + (opts.readOnly ? '<span class="chip chip-neutral">read-only</span>' : '<button class="btn btn-ghost btn-sm" data-dr-edit="' + row.id + '">Editar</button>') + '</td>' +
+      '</tr>'
+    );
+  };
+
+  /* ─── V4.8 HA LiteLLM status pill ─── */
+  W.haStatusPill = function (instance) {
+    const st = instance && instance.status === 'healthy' ? 'ok' : 'fail';
+    const cls = st === 'ok' ? 'fl-ha--ok' : 'fl-ha--fail';
+    const dot = st === 'ok' ? '●' : '✕';
+    const lbl = (instance && instance.id) ? instance.id + ' · ' + (instance.endpoint || '') : '—';
+    const sub = instance ? 'uptime ' + (instance.uptimePct || '?') + '% · p50 ' + (instance.latencyP50Ms || '?') + 'ms' : '';
+    return (
+      '<div class="fl-ha ' + cls + '">' +
+      '<span class="fl-ha__dot" aria-hidden="true">' + dot + '</span>' +
+      '<div class="fl-ha__body">' +
+      '<div class="t-label-sm"><strong>' + lbl + '</strong></div>' +
+      '<div class="t-caption muted">' + sub + '</div>' +
+      '</div>' +
+      '</div>'
+    );
+  };
+
+  /* ─── V4.9 F2 muted card (Coming in F2 · Adaptive, Arena, Critic) ─── */
+  W.f2MutedCard = function (card) {
+    const features = (card.features || []).map(f => '<li>' + f + '</li>').join('');
+    const refs = (card.refs || []).map(r => '<code class="t-mono" style="font-size:11px;">' + r + '</code>').join(' · ');
+    const gate = card.gateProgress
+      ? '<div class="fl-f2card__gate-progress t-caption muted">' +
+        'Gate: ' + (card.gateProgress.tenantsQualified || 0) + '/' + (card.gateProgress.tenantsNeeded || 3) +
+        ' tenants · ' + (card.gateProgress.progressPct || 0) + '%</div>'
+      : '';
+    return (
+      '<article class="fl-f2card" data-f2-id="' + card.id + '" aria-label="' + card.title + ' (F2)">' +
+      '<header class="fl-f2card__head">' +
+      '<span class="chip fl-f2card__chip">Coming in F2</span>' +
+      '<span class="t-caption muted">' + card.id + '</span>' +
+      '</header>' +
+      '<h3 class="t-heading-sm fl-f2card__title">' + card.title + '</h3>' +
+      '<div class="t-body-sm fl-f2card__gate"><strong>Unlock:</strong> ' + (card.gateText || '') + '</div>' +
+      gate +
+      (card.rationale ? '<p class="t-body-sm muted">' + card.rationale + '</p>' : '') +
+      (features ? '<ul class="fl-f2card__features">' + features + '</ul>' : '') +
+      (refs ? '<div class="fl-f2card__refs t-caption muted">' + refs + '</div>' : '') +
+      '</article>'
+    );
+  };
+
+  /* ─── Inject widget styles ───────────────────────── */
+  W.injectStyles = function () {
+    if (document.getElementById('fl-widget-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'fl-widget-styles';
+    s.textContent = `
+.fl-thermometer {
+  display: inline-flex; align-items: center; gap: var(--space-2);
+  padding: 4px var(--space-3);
+  border-radius: var(--radius-pill);
+  font-size: 12px; border: 1px solid; min-height: 24px;
+}
+
+.fl-ladder {
+  display: flex; align-items: center; gap: 0;
+  padding: var(--space-3) var(--space-4);
+  background: var(--bg-subtle); border-radius: var(--radius-lg);
+  flex-wrap: wrap;
+}
+.fl-ladder-step { display: flex; align-items: center; gap: var(--space-2); }
+.fl-ladder-dot {
+  width: 32px; height: 32px; border-radius: var(--radius-pill);
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 600;
+  background: var(--bg-surface); color: var(--text-muted);
+  border: var(--stroke-md) solid var(--stroke-default);
+}
+.fl-ladder-step.active .fl-ladder-dot { background: var(--ladder-color, var(--accent-primary)); color: #fff; border-color: transparent; }
+.fl-ladder-step.completed .fl-ladder-dot { background: var(--status-success-soft); color: var(--status-success); border-color: var(--status-success); }
+.fl-ladder-step.locked { opacity: 0.55; }
+.fl-ladder-label { display: flex; flex-direction: column; gap: 2px; min-width: 70px; }
+.fl-ladder-bar { width: 24px; height: 2px; background: var(--stroke-default); margin: 0 var(--space-1); }
+.fl-ladder-unlock { flex-basis: 100%; margin-top: var(--space-3); padding-top: var(--space-3); border-top: 1px dashed var(--stroke-default); }
+
+.fl-prov-sup {
+  color: var(--text-evidence); font-family: var(--font-mono);
+  font-size: 10px; font-weight: 700; padding: 0 3px;
+  border-radius: var(--radius-sm); cursor: pointer;
+  transition: background var(--dur-fast);
+  vertical-align: super; margin-left: 1px;
+  text-decoration: underline; text-decoration-style: dotted; text-underline-offset: 2px;
+}
+.fl-prov-sup:hover, .fl-prov-sup:focus-visible, .fl-prov-sup.highlighted { background: var(--accent-primary-soft); outline: none; }
+
+.fl-risk-badge { background: transparent; border: 1.5px solid; }
+.fl-draft-state { background: transparent; border: 1.5px solid; }
+
+.fl-empty { padding: var(--space-12) var(--space-6); text-align: center; max-width: 480px; margin: 0 auto; }
+.fl-empty-icon { font-size: 40px; color: var(--text-muted); opacity: 0.5; margin-bottom: var(--space-4); }
+
+.fl-skeleton-row {
+  background: linear-gradient(90deg, var(--bg-subtle) 0%, var(--bg-sunken) 50%, var(--bg-subtle) 100%);
+  background-size: 200% 100%;
+  animation: fl-shimmer 1.4s infinite;
+  border-radius: var(--radius-sm);
+}
+@keyframes fl-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+.fl-overlay-backdrop {
+  position: fixed; inset: 0; background: var(--bg-overlay);
+  display: flex; align-items: center; justify-content: center;
+  padding: var(--space-6); z-index: var(--z-modal);
+  animation: fl-fade-in var(--dur-base) var(--ease-out);
+}
+@keyframes fl-fade-in { from { opacity: 0; } to { opacity: 1; } }
+.fl-overlay-card { max-height: 90vh; overflow-y: auto; box-shadow: var(--shadow-overlay); }
+
+.fl-feedback-list { display: flex; flex-direction: column; gap: var(--space-2); }
+.fl-feedback-item {
+  display: flex; align-items: flex-start; gap: var(--space-3);
+  padding: var(--space-3);
+  border: var(--stroke-md) solid var(--stroke-default);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: border-color var(--dur-fast), background var(--dur-fast);
+}
+.fl-feedback-item:hover { background: var(--bg-subtle); }
+.fl-feedback-item:has(input:checked) { border-color: var(--accent-primary); background: var(--accent-primary-soft); }
+.fl-feedback-item input { margin-top: 4px; accent-color: var(--accent-primary); }
+
+.fl-cons-section { padding: var(--space-4) 0; border-bottom: 1px solid var(--stroke-default); }
+.fl-cons-section:last-of-type { border-bottom: 0; }
+.fl-cons-section h3 { color: var(--text-muted); margin: 0 0 var(--space-2) 0; }
+.fl-cons-applies { display: flex; gap: var(--space-4); flex-wrap: wrap; }
+.fl-cons-applies > div { display: flex; flex-direction: column; gap: var(--space-1); }
+.fl-cons-impact { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.fl-cons-impact > div { display: flex; flex-direction: column; gap: var(--space-1); }
+@media (max-width: 700px) { .fl-cons-impact { grid-template-columns: 1fr; } }
+
+/* Toast */
+#fl-toast-slot {
+  position: fixed; right: var(--space-4); bottom: var(--space-4);
+  display: flex; flex-direction: column; gap: var(--space-2);
+  z-index: var(--z-toast); pointer-events: none;
+}
+.fl-toast {
+  pointer-events: auto;
+  display: flex; align-items: center; gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--bg-surface);
+  border: 1px solid var(--stroke-default);
+  border-left: 3px solid var(--status-info);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-float);
+  max-width: 420px; min-width: 280px;
+  animation: fl-toast-in var(--dur-base) var(--ease-out);
+  font-size: 13px;
+}
+.fl-toast--success { border-left-color: var(--status-success); }
+.fl-toast--warn    { border-left-color: var(--status-warning); }
+.fl-toast--error   { border-left-color: var(--status-danger); }
+.fl-toast--info    { border-left-color: var(--status-info); }
+.fl-toast__icon { font-weight: 700; font-size: 16px; }
+.fl-toast__msg { flex: 1; }
+.fl-toast__close { background: transparent; border: 0; color: var(--text-muted); cursor: pointer; font-size: 16px; line-height: 1; padding: 0 var(--space-1); }
+.fl-toast--out { animation: fl-toast-out var(--dur-base) var(--ease-out) forwards; }
+@keyframes fl-toast-in { from { transform: translateY(8px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+@keyframes fl-toast-out { from { transform: translateY(0); opacity: 1; } to { transform: translateY(8px); opacity: 0; } }
+
+/* Tabs */
+.fl-tabs { display: flex; flex-direction: column; gap: var(--space-3); }
+.fl-tab-list { display: flex; gap: var(--space-1); border-bottom: 1px solid var(--stroke-default); }
+.fl-tab {
+  background: transparent; border: 0; padding: var(--space-2) var(--space-4);
+  border-bottom: 2px solid transparent; margin-bottom: -1px;
+  font-size: 13px; font-weight: 500; color: var(--text-muted); cursor: pointer;
+  transition: color var(--dur-fast), border-color var(--dur-fast);
+}
+.fl-tab:hover { color: var(--text-primary); }
+.fl-tab--active { color: var(--accent-primary); border-bottom-color: var(--accent-primary); }
+.fl-tab-panel[hidden] { display: none; }
+
+/* Diff */
+.fl-diff { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-3); }
+.fl-diff__col { display: flex; flex-direction: column; gap: var(--space-1); min-width: 0; }
+.fl-diff__pre {
+  background: var(--bg-sunken); padding: var(--space-3); border-radius: var(--radius-md);
+  font-family: var(--font-mono); font-size: 12px; line-height: 1.5;
+  margin: 0; white-space: pre-wrap; overflow-x: auto; color: var(--text-secondary);
+}
+.fl-diff__pre--right { background: var(--accent-primary-soft); border-left: 3px solid var(--accent-primary); color: var(--text-primary); }
+@media (max-width: 700px) { .fl-diff { grid-template-columns: 1fr; } }
+
+/* Timeline */
+.fl-tl { display: flex; flex-direction: column; gap: 0; }
+.fl-tl__row {
+  display: grid; grid-template-columns: 80px 16px 1fr; gap: var(--space-3);
+  align-items: flex-start; padding: var(--space-2) 0;
+  position: relative;
+}
+.fl-tl__row::before {
+  content: ''; position: absolute; left: 87px; top: 26px; bottom: -8px;
+  width: 2px; background: var(--stroke-default);
+}
+.fl-tl__row:last-child::before { display: none; }
+.fl-tl__ts { font-family: var(--font-mono); font-size: 11px; color: var(--text-muted); padding-top: 4px; }
+.fl-tl__dot { width: 12px; height: 12px; border-radius: 50%; background: var(--stroke-default); margin-top: 5px; border: 2px solid var(--bg-canvas); }
+.fl-tl__row--done .fl-tl__dot { background: var(--status-success); }
+.fl-tl__row--active .fl-tl__dot { background: var(--accent-primary); box-shadow: 0 0 0 3px var(--accent-primary-soft); }
+.fl-tl__body { min-width: 0; }
+.fl-tl__actor { font-size: 12px; color: var(--text-muted); }
+.fl-tl__action { font-size: 13px; }
+
+/* ═══════════════════════════════════════════════════════════════
+   [V2-PATCH 2026-04-19] · Chat widgets styles
+   ═══════════════════════════════════════════════════════════════ */
+
+/* 16. ChatComposer */
+.fl-composer { display:flex; flex-direction:column; gap:var(--space-2); padding:var(--space-3); background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-lg); }
+.fl-composer__pills { display:flex; flex-wrap:wrap; gap:var(--space-1); }
+.fl-pill { display:inline-flex; align-items:center; gap:var(--space-1); padding:3px var(--space-2); background:var(--bg-subtle); border:1px solid var(--stroke-default); border-radius:var(--radius-pill); font-size:12px; }
+.fl-pill--skill { background:var(--accent-primary-soft); color:var(--accent-primary); border-color:var(--accent-primary); }
+.fl-pill--agent { background:var(--status-info-soft); color:var(--status-info); border-color:var(--status-info); }
+.fl-pill__lvl { background:var(--status-info); color:#fff; padding:1px 5px; border-radius:var(--radius-sm); font-size:10px; font-weight:700; }
+.fl-pill__x { background:transparent; border:0; cursor:pointer; color:inherit; font-size:14px; line-height:1; padding:0 2px; opacity:0.6; }
+.fl-pill__x:hover { opacity:1; }
+.fl-composer__row { display:flex; align-items:flex-end; gap:var(--space-2); }
+.fl-composer__input { flex:1; resize:none; min-height:36px; max-height:200px; padding:var(--space-2) var(--space-3); border:1px solid var(--stroke-default); border-radius:var(--radius-md); background:var(--bg-surface); color:var(--text-primary); font:inherit; line-height:1.5; }
+.fl-composer__input:focus { outline:2px solid var(--stroke-focus); outline-offset:2px; }
+.fl-composer__attach { background:transparent; border:0; cursor:pointer; font-size:18px; padding:var(--space-2); color:var(--text-muted); }
+.fl-composer__attach:hover { color:var(--text-primary); }
+.fl-composer__send { flex-shrink:0; min-height:36px; }
+
+/* 17. IterationComposer */
+.fl-iter { margin:var(--space-2) 0 var(--space-3) var(--space-5); padding:var(--space-3); background:var(--accent-primary-soft); border-left:3px solid var(--accent-primary); border-radius:var(--radius-md); }
+.fl-iter__hint { margin-bottom:var(--space-2); color:var(--accent-primary); }
+.fl-iter__input { width:100%; resize:vertical; min-height:72px; padding:var(--space-2); border:1px solid var(--stroke-default); border-radius:var(--radius-sm); background:var(--bg-surface); font:inherit; }
+.fl-iter__actions { display:flex; justify-content:flex-end; gap:var(--space-2); margin-top:var(--space-2); }
+
+/* 18. SkillPill */
+.fl-sk-pill { display:flex; align-items:center; gap:var(--space-1); padding:var(--space-1) var(--space-2); background:var(--bg-subtle); border:1px solid var(--stroke-default); border-radius:var(--radius-pill); cursor:pointer; font-size:12px; color:var(--text-primary); transition:background var(--dur-fast), border-color var(--dur-fast); }
+.fl-sk-pill:hover { background:var(--bg-surface); border-color:var(--stroke-strong); }
+.fl-sk-pill--active { background:var(--accent-primary-soft); border-color:var(--accent-primary); box-shadow:0 0 0 2px var(--accent-primary-soft); }
+.fl-sk-pill__heat { font-size:10px; }
+
+/* 19. AgentChip */
+.fl-ag-chip { display:inline-flex; align-items:center; gap:var(--space-1); padding:2px 6px; background:var(--status-info-soft); border:1px solid var(--status-info); border-radius:var(--radius-sm); font-size:12px; color:var(--status-info); }
+.fl-ag-chip__lvl { background:var(--status-info); color:#fff; padding:0 4px; border-radius:var(--radius-xs); font-size:10px; font-weight:700; }
+
+/* 20. GroundedInBlock */
+.fl-gin { display:flex; flex-direction:column; gap:var(--space-2); }
+.fl-gin h3 { margin:0 0 var(--space-1) 0; color:var(--text-muted); }
+.fl-gin__row { padding:var(--space-2); background:var(--bg-subtle); border-radius:var(--radius-sm); border-left:2px solid var(--stroke-default); transition:border-color var(--dur-fast), background var(--dur-fast); }
+.fl-gin__row.highlighted { border-left-color:var(--accent-primary); background:var(--accent-primary-soft); }
+.fl-gin__head { display:flex; justify-content:space-between; align-items:center; gap:var(--space-2); }
+.fl-gin__title { font-size:12.5px; flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fl-gin__score { font-family:var(--font-mono); font-size:10.5px; color:var(--text-muted); background:var(--bg-surface); padding:1px 5px; border-radius:var(--radius-xs); }
+.fl-gin__meta { margin-top:2px; display:flex; flex-wrap:wrap; gap:var(--space-1); font-size:11px; }
+.fl-gin__bar { margin-top:4px; height:3px; background:var(--stroke-default); border-radius:var(--radius-xs); overflow:hidden; }
+.fl-gin__bar-fill { height:100%; background:var(--accent-primary); transition:width var(--dur-base); }
+
+/* 21. MessageActionsMenu */
+.fl-mam { position:relative; display:inline-block; }
+.fl-mam__btn { background:transparent; border:0; cursor:pointer; color:var(--text-muted); font-size:18px; padding:2px 6px; border-radius:var(--radius-sm); line-height:1; }
+.fl-mam__btn:hover { background:var(--bg-subtle); color:var(--text-primary); }
+.fl-mam__menu { position:absolute; right:0; top:calc(100% + 4px); background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-md); box-shadow:var(--shadow-float); min-width:200px; z-index:var(--z-dropdown); padding:var(--space-1); }
+.fl-mam__item { display:block; width:100%; text-align:left; padding:var(--space-1) var(--space-2); background:transparent; border:0; cursor:pointer; font:inherit; font-size:13px; border-radius:var(--radius-sm); color:var(--text-primary); }
+.fl-mam__item:hover { background:var(--bg-subtle); }
+
+/* 22. PatternBadge */
+.fl-pb { display:inline-flex; align-items:center; gap:var(--space-1); padding:2px var(--space-2); border-radius:var(--radius-pill); font-size:11px; font-weight:500; white-space:nowrap; }
+.fl-pb--none    { background:var(--bg-subtle);           color:var(--text-muted); }
+.fl-pb--learned { background:var(--status-info-soft);    color:var(--status-info); }
+.fl-pb--gold    { background:var(--status-warning-soft); color:var(--status-warning); }
+.fl-pb--sealed  { background:var(--bg-sunken);           color:var(--text-secondary); }
+
+/* 23. VoiceOfCustomerCard */
+.fl-voc { margin:var(--space-2) 0; padding:var(--space-3); background:var(--bg-subtle); border-left:3px solid var(--status-info); border-radius:var(--radius-md); }
+.fl-voc--positive { border-left-color:var(--status-success); }
+.fl-voc--negative { border-left-color:var(--status-danger); }
+.fl-voc--neutral  { border-left-color:var(--status-info); }
+.fl-voc__head { display:flex; align-items:center; gap:var(--space-1); margin-bottom:var(--space-1); }
+.fl-voc__sentiment { font-size:14px; }
+.fl-voc__quote { margin:0; padding:0; font-family:var(--font-display); font-style:italic; font-size:15px; line-height:1.4; color:var(--text-primary); }
+.fl-voc__src { margin-top:var(--space-1); }
+
+/* 24. SuggestGrid */
+.fl-sg { display:grid; grid-template-columns:repeat(2, 1fr); gap:var(--space-3); }
+@media (max-width: 600px) { .fl-sg { grid-template-columns:1fr; } }
+.fl-sg__item { display:flex; align-items:flex-start; gap:var(--space-3); padding:var(--space-4); background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-lg); text-align:left; cursor:pointer; font:inherit; transition:border-color var(--dur-fast), background var(--dur-fast); }
+.fl-sg__item:hover { border-color:var(--accent-primary); background:var(--accent-primary-soft); }
+.fl-sg__icon { font-size:22px; line-height:1; flex-shrink:0; }
+.fl-sg__body { flex:1; min-width:0; }
+.fl-sg__title { font-size:14px; font-weight:600; color:var(--text-primary); margin-bottom:2px; }
+.fl-sg__hint { line-height:1.4; }
+
+/* 25. SLABar */
+.fl-sla { padding:var(--space-2) var(--space-3); background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-md); }
+.fl-sla__head { display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-1); }
+.fl-sla__num { font-size:12px; }
+.fl-sla__num strong { color:var(--text-primary); }
+.fl-sla__track { position:relative; height:6px; background:var(--stroke-default); border-radius:var(--radius-xs); overflow:hidden; }
+.fl-sla__fill { height:100%; background:var(--status-success); transition:width var(--dur-base); }
+.fl-sla--warn   .fl-sla__fill { background:var(--status-warning); }
+.fl-sla--breach .fl-sla__fill { background:var(--status-danger); }
+.fl-sla__warn { margin-top:var(--space-1); color:var(--status-warning); }
+.fl-sla--breach .fl-sla__warn { color:var(--status-danger); }
+
+/* 26. Sparkline */
+.fl-spark { color:var(--accent-primary); vertical-align:middle; }
+
+/* V3.5-PATCH · 30. AgentSpec Wizard */
+.aspw-progress { height:4px; background:var(--bg-subtle); border-radius:var(--radius-pill); overflow:hidden; margin:var(--space-2) 0 var(--space-3); }
+.aspw-progress-fill { height:100%; background:var(--accent-primary); transition:width var(--dur-base) var(--ease-out); }
+.aspw-body { min-height:280px; max-height:60vh; overflow-y:auto; padding:var(--space-2) 0; }
+.aspw-form { display:flex; flex-direction:column; gap:var(--space-3); }
+.aspw-form label { display:flex; flex-direction:column; gap:var(--space-1); }
+.aspw-foot { display:flex; gap:var(--space-2); justify-content:flex-end; padding-top:var(--space-3); border-top:1px solid var(--stroke-default); margin-top:var(--space-3); }
+.aspw-skills { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:var(--space-1); }
+.aspw-skill-row { padding:var(--space-2); background:var(--bg-subtle); border-radius:var(--radius-sm); }
+.aspw-skill-row label { flex-direction:row; align-items:center; gap:var(--space-2); cursor:pointer; }
+.aspw-skill-row input { margin-right:var(--space-1); }
+.aspw-skill-name { min-width:180px; }
+.aspw-checks { list-style:none; padding:0; margin:var(--space-2) 0; display:flex; flex-direction:column; gap:var(--space-1); max-height:240px; overflow-y:auto; }
+.aspw-checks li { padding:4px var(--space-2); background:var(--bg-subtle); border-radius:var(--radius-sm); }
+.aspw-checks label { display:flex; align-items:center; gap:var(--space-2); cursor:pointer; flex-direction:row; }
+.aspw-summary { margin-top:var(--space-3); padding:var(--space-3); background:var(--bg-subtle); border-radius:var(--radius-md); border-left:3px solid var(--accent-primary); }
+.aspw-dl { display:grid; grid-template-columns:auto 1fr; gap:var(--space-1) var(--space-3); margin:var(--space-2) 0 0; font-size:13px; }
+.aspw-dl dt { color:var(--text-muted); }
+.aspw-dl dd { margin:0; }
+
+/* V3-PATCH · 27. AI Assist Toolbar */
+.fl-aia { padding:var(--space-2) var(--space-3); background:var(--accent-primary-soft); border:1px dashed var(--accent-primary); border-radius:var(--radius-md); margin:var(--space-2) 0; }
+.fl-aia__head { margin-bottom:var(--space-1); }
+.fl-aia__row { display:flex; flex-wrap:wrap; gap:var(--space-1); align-items:center; }
+.fl-aia__btn { background:var(--bg-surface); border:1px solid var(--stroke-default); padding:4px var(--space-2); border-radius:var(--radius-sm); cursor:pointer; font:inherit; font-size:12px; color:var(--text-primary); transition:background var(--dur-fast); }
+.fl-aia__btn:hover { background:var(--bg-subtle); }
+.fl-aia__btn--escape { background:var(--accent-primary); color:#fff; border-color:var(--accent-primary); margin-left:auto; font-family:var(--font-mono); }
+.fl-aia__result { margin-top:var(--space-2); padding:var(--space-2); background:var(--bg-surface); border-radius:var(--radius-sm); border-left:3px solid var(--accent-primary); }
+.fl-aia__result-head { display:flex; align-items:center; gap:var(--space-2); margin-bottom:var(--space-2); }
+.fl-aia__result-body { font-size:13px; line-height:1.5; }
+
+/* V3-PATCH · 28. AI Assist Chat */
+.fl-aiac { margin:var(--space-2) 0; padding:var(--space-2); background:var(--bg-subtle); border:1px solid var(--stroke-default); border-radius:var(--radius-md); }
+.fl-aiac__head { display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-2); }
+.fl-aiac__close { background:transparent; border:0; cursor:pointer; color:var(--text-muted); font-size:16px; }
+.fl-aiac__thread { max-height:200px; overflow-y:auto; display:flex; flex-direction:column; gap:var(--space-2); margin-bottom:var(--space-2); }
+.fl-aiac__msg { padding:var(--space-1) var(--space-2); border-radius:var(--radius-sm); font-size:12px; }
+.fl-aiac__msg--u { background:var(--accent-primary-soft); align-self:flex-end; max-width:80%; }
+.fl-aiac__msg--a { background:var(--bg-surface); border:1px solid var(--stroke-default); align-self:flex-start; max-width:80%; }
+.fl-aiac__row { display:flex; gap:var(--space-1); }
+.fl-aiac__input { flex:1; min-height:32px; font-size:12px; }
+
+/* V3-PATCH · 29. Chat thread primitive */
+.fl-cthread { display:flex; flex-direction:column; gap:var(--space-2); padding:var(--space-3); background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-md); }
+.fl-cthread__head { padding-bottom:var(--space-1); border-bottom:1px solid var(--stroke-default); }
+.fl-cthread__list { display:flex; flex-direction:column; gap:var(--space-2); max-height:280px; overflow-y:auto; padding:var(--space-1) 0; }
+.fl-cthread__msg { padding:var(--space-2); border-radius:var(--radius-sm); font-size:13px; }
+.fl-cthread__msg--user { background:var(--accent-primary-soft); align-self:flex-end; max-width:90%; }
+.fl-cthread__msg--agent { background:var(--bg-subtle); align-self:flex-start; max-width:90%; border-left:2px solid var(--brand-coral); }
+.fl-cthread__sender { color:var(--text-muted); margin-bottom:2px; }
+.fl-cthread__body { line-height:1.5; }
+.fl-cthread__composer { padding-top:var(--space-1); border-top:1px solid var(--stroke-default); }
+
+/* ═══════════ V4-PATCH 2026-04-22 · F1 widget styles ═══════════ */
+
+/* V4.1 Sealed / Open badge */
+.fl-sealopen { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border:1px solid; border-radius:var(--radius-pill); font-size:11px; font-weight:600; letter-spacing:0.02em; line-height:1; min-height:20px; }
+.fl-sealopen[data-compact="1"] { padding:1px 6px; font-size:10px; }
+.fl-sealopen--sealed { background:var(--sealed-chip-bg); border-color:var(--sealed-border); color:var(--sealed-ink); }
+.fl-sealopen--open   { background:var(--open-chip-bg);   border-color:var(--open-border);   color:var(--open-ink); }
+.fl-fork-cta { color:var(--open-ink); border:1px dashed var(--open-border); }
+.fl-fork-cta:hover { background:var(--open-chip-bg); }
+
+/* V4.3 Authority slider */
+.fl-auth { display:flex; flex-direction:column; gap:var(--space-2); padding:var(--space-3); background:var(--bg-subtle); border:1px solid var(--stroke-default); border-radius:var(--radius-md); }
+.fl-auth__label { text-transform:uppercase; letter-spacing:0.06em; }
+.fl-auth__seg-row { display:inline-flex; gap:0; background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-md); padding:2px; flex-wrap:wrap; }
+.fl-auth-seg { display:inline-flex; align-items:center; gap:6px; padding:6px 10px; border:0; background:transparent; border-radius:var(--radius-sm); cursor:pointer; font-size:12px; color:var(--text-secondary); transition:background var(--dur-fast) var(--ease-out); }
+.fl-auth-seg:hover:not(.fl-auth-seg--disabled) { background:var(--bg-sunken); }
+.fl-auth-seg--active { background:var(--accent-primary-soft); color:var(--text-primary); font-weight:600; box-shadow:inset 0 0 0 1px var(--accent-primary); }
+.fl-auth-seg--disabled { opacity:0.4; cursor:not-allowed; }
+.fl-auth-seg__dot { width:8px; height:8px; border-radius:50%; display:inline-block; }
+.fl-auth-seg__dot[data-auth="SENALA"]                 { background:var(--auth-signal); }
+.fl-auth-seg__dot[data-auth="PROPONE"]                { background:var(--auth-propose); }
+.fl-auth-seg__dot[data-auth="EJECUTA_CON_APROBACION"] { background:var(--auth-exec-approve); }
+.fl-auth-seg__dot[data-auth="EJECUTA_SOLO"]           { background:var(--auth-exec-solo); }
+.fl-auth__sacred { padding:var(--space-2) var(--space-3); background:var(--status-warning-soft); border-left:3px solid var(--status-warning); border-radius:var(--radius-sm); color:var(--text-secondary); }
+
+/* V4.4 Circuit Breaker light */
+.fl-cb { display:inline-flex; align-items:center; gap:6px; padding:3px 9px; border:1px solid; border-radius:var(--radius-pill); font-size:11px; font-weight:600; min-height:22px; line-height:1; }
+.fl-cb__dot { font-size:11px; line-height:1; }
+.fl-cb--closed { background:var(--cb-closed-soft);    border-color:var(--cb-closed);    color:var(--cb-closed); }
+.fl-cb--half   { background:var(--cb-half-open-soft); border-color:var(--cb-half-open); color:var(--cb-half-open); }
+.fl-cb--open   { background:var(--cb-open-soft);      border-color:var(--cb-open);      color:var(--cb-open); }
+
+/* V4.5 Cold Start banner */
+.fl-coldstart { display:flex; gap:var(--space-3); align-items:flex-start; padding:var(--space-3) var(--space-4); background:var(--status-info-soft); border:1px solid var(--status-info); border-left:4px solid var(--status-info); border-radius:var(--radius-md); margin-bottom:var(--space-4); }
+.fl-coldstart__icon { font-size:22px; line-height:1; flex-shrink:0; }
+.fl-coldstart__body { flex:1; display:flex; flex-direction:column; gap:var(--space-1); }
+.fl-coldstart__title { color:var(--text-primary); }
+.fl-coldstart__progress { height:6px; background:var(--bg-surface); border-radius:var(--radius-pill); overflow:hidden; margin-top:var(--space-2); }
+.fl-coldstart__bar { height:100%; background:var(--status-info); border-radius:var(--radius-pill); transition:width var(--dur-slow) var(--ease-out); }
+.fl-coldstart__meta { margin-top:4px; }
+
+/* V4.6 Pending CEO flag */
+.fl-pending-ceo { display:inline-flex; align-items:center; gap:4px; padding:2px 7px; background:var(--pending-ceo-bg); color:var(--pending-ceo); border:1px dashed var(--pending-ceo-border); border-radius:var(--radius-pill); font-size:11px; font-weight:600; cursor:help; min-height:20px; line-height:1; }
+
+/* V4.7 Data residency table row */
+.fl-dr-row { border-bottom:1px solid var(--stroke-default); }
+.fl-dr-row td { padding:var(--space-2) var(--space-3); vertical-align:top; }
+
+/* V4.8 HA LiteLLM status pill */
+.fl-ha { display:flex; gap:var(--space-2); align-items:flex-start; padding:var(--space-2) var(--space-3); border:1px solid; border-radius:var(--radius-md); min-width:240px; background:var(--bg-surface); }
+.fl-ha__dot { font-size:14px; line-height:1; font-weight:bold; }
+.fl-ha__body { flex:1; display:flex; flex-direction:column; gap:2px; }
+.fl-ha--ok   { border-color:var(--cb-closed); }
+.fl-ha--ok   .fl-ha__dot { color:var(--cb-closed); }
+.fl-ha--fail { border-color:var(--cb-open); background:var(--cb-open-soft); }
+.fl-ha--fail .fl-ha__dot { color:var(--cb-open); }
+
+/* V4.9 F2 muted card */
+.fl-f2card { padding:var(--space-4); background:var(--fl-muted-bg); border:1px dashed var(--fl-muted-border); border-radius:var(--radius-lg); color:var(--fl-muted-ink); display:flex; flex-direction:column; gap:var(--space-2); }
+.fl-f2card__head { display:flex; justify-content:space-between; align-items:center; }
+.fl-f2card__chip { background:var(--fl-muted-chip-bg); color:var(--fl-muted-ink); border:1px solid var(--fl-muted-border); font-size:10px; font-weight:700; letter-spacing:0.08em; text-transform:uppercase; }
+.fl-f2card__title { color:var(--text-secondary); margin:0; }
+.fl-f2card__gate  { color:var(--text-primary); }
+.fl-f2card__gate-progress { padding:var(--space-1) var(--space-2); background:var(--bg-sunken); border-radius:var(--radius-sm); }
+.fl-f2card__features { margin:var(--space-2) 0 0 var(--space-4); padding:0; font-size:12px; color:var(--text-secondary); }
+.fl-f2card__features li { margin-bottom:2px; }
+.fl-f2card__refs { padding-top:var(--space-2); border-top:1px solid var(--fl-muted-border); }
+
+/* ═══════════ end V4-PATCH 2026-04-22 ═══════════ */
+    `;
+    document.head.appendChild(s);
+  };
+})();

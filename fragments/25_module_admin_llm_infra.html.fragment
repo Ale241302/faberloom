@@ -1,0 +1,574 @@
+<script>
+/* ============================================================
+   FaberLoom v1 Beta · V4-PATCH 2026-04-22
+   Admin · LLM Orchestration & Infra
+   Sub-tabs: Tiers · Data Residency · Circuit Breakers · HA LiteLLM ·
+             Cold Start · Voice Profile · Q1-Q18 Open Questions · F2 Roadmap
+   Fuentes canónicas: ENT_PLAT_LLM_ROUTING v2.0 · DEC-006/007/008 ·
+                      SPEC_AGENT_COMPOSITION §6 · SPEC_SKILL_COMPOSITION §7
+   ============================================================ */
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null;
+  let currentTab = 'tiers';
+
+  const TABS = [
+    { key:'tiers',     label:'Tiers',                title:'4 tiers hardcoded (F1)' },
+    { key:'residency', label:'Data Residency',       title:'tenant_model_allowlist · hard block' },
+    { key:'cb',        label:'Circuit Breakers',     title:'2-level (provider + model) · Redis' },
+    { key:'ha',        label:'HA LiteLLM',           title:'primary:4000 + backup:4001 + HAProxy' },
+    { key:'coldstart', label:'Cold Start',           title:'30 días · CEO review ≥1/día' },
+    { key:'voice',     label:'Voice Profile',        title:'6º Add-on · per-tenant · reemplaza Arena' },
+    { key:'questions', label:'Open Questions',       title:'Q1-Q18 · pending CEO' },
+    { key:'roadmap',   label:'F2 Roadmap',           title:'Adaptive · Arena · Critic · Coming in F2' }
+  ];
+
+  function mount(slot, ctx) {
+    root = slot;
+    if (FL.session.role === 'operator') {
+      root.innerHTML = W.degradedCard('admin-llm-infra', new Error('Operator no puede leer esta vista. Solo owner / admin.'));
+      return { unmount: () => { if (root) root.innerHTML = ''; } };
+    }
+    const params = (ctx && ctx.params) || {};
+    const q      = (ctx && ctx.query)  || {};
+    const initTab = params.tab || q.tab || 'tiers';
+    currentTab = TABS.some(t => t.key === initTab) ? initTab : 'tiers';
+    render();
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  function render() {
+    root.innerHTML =
+      '<div class="ali-wrap">' +
+        headerBar() +
+        tabsBar() +
+        '<section class="ali-pane" id="ali-pane">' + renderTab(currentTab) + '</section>' +
+      '</div>';
+    wireTabs();
+    wirePane();
+  }
+
+  /* ─── Header ─────────────────────────────────────────────── */
+  function headerBar() {
+    const mock = FL.mock;
+    const cs = mock.coldStart || {};
+    const haOk = mock.haLitellm && mock.haLitellm.primary && mock.haLitellm.primary.status === 'healthy';
+    return (
+      '<header class="ali-header">' +
+      '<div class="ali-header__titles">' +
+        '<h1 class="t-display-md">LLM Orchestration · Infra</h1>' +
+        '<p class="t-body-md muted">Routing tier-based hardcoded (F1) · governance · Data Residency · Circuit Breakers · HA LiteLLM.<br>' +
+        'Editable YAML solo vía <strong>commit + PR</strong> en <code>faberloom/config/llm_tiers.yaml</code>. ' +
+        '<a href="' + (mock.llmTiersYamlUrl || '#') + '" target="_blank" rel="noopener">Ver en GitHub ↗</a></p>' +
+      '</div>' +
+      '<div class="ali-header__status">' +
+        '<span class="chip" title="DEC-006 · F1 stack canonizado">DEC-006 · F1</span>' +
+        (haOk ? '<span class="chip chip-success">HA ok</span>' : '<span class="chip chip-danger">HA degraded</span>') +
+        (cs.enabled ? '<span class="chip chip-info">❄ Cold start · día ' + cs.daysElapsed + '/' + cs.daysTotal + '</span>' : '') +
+      '</div>' +
+      '</header>'
+    );
+  }
+
+  /* ─── Tabs ───────────────────────────────────────────────── */
+  function tabsBar() {
+    return (
+      '<nav class="ali-tabs" role="tablist" aria-label="LLM admin sections">' +
+        TABS.map(t =>
+          '<button type="button" class="ali-tab' + (t.key === currentTab ? ' ali-tab--active' : '') + '" ' +
+          'role="tab" aria-selected="' + (t.key === currentTab) + '" ' +
+          'data-tab="' + t.key + '" title="' + t.title + '">' +
+          t.label +
+          '</button>'
+        ).join('') +
+      '</nav>'
+    );
+  }
+
+  function wireTabs() {
+    root.querySelectorAll('.ali-tab').forEach(btn => {
+      btn.addEventListener('click', () => {
+        currentTab = btn.getAttribute('data-tab');
+        location.hash = '#/admin/llm-orchestration/' + currentTab;
+      });
+    });
+  }
+
+  /* ─── Router dispatch ────────────────────────────────────── */
+  function renderTab(key) {
+    switch (key) {
+      case 'tiers':     return renderTiers();
+      case 'residency': return renderResidency();
+      case 'cb':        return renderCircuitBreakers();
+      case 'ha':        return renderHaLitellm();
+      case 'coldstart': return renderColdStart();
+      case 'voice':     return renderVoiceProfile();
+      case 'questions': return renderOpenQuestions();
+      case 'roadmap':   return renderF2Roadmap();
+      default:          return renderTiers();
+    }
+  }
+
+  function wirePane() {
+    if (currentTab === 'residency') wireResidencyPane();
+    if (currentTab === 'voice')     wireVoicePane();
+    if (currentTab === 'questions') wireQuestionsPane();
+  }
+
+  /* ═════════════════════════════════════════════════════════
+     TAB 1 · Tiers (hardcoded · read-only UI)
+     ═════════════════════════════════════════════════════════ */
+  function renderTiers() {
+    const mock = FL.mock;
+    const tiers = mock.llmTiers || [];
+    const last = mock.llmTiersLastCommit || {};
+    const rows = tiers.map(t =>
+      '<tr>' +
+      '<td><span class="chip chip-neutral">' + t.key + '</span></td>' +
+      '<td class="t-mono" style="font-size:12px;">' + t.primary + '</td>' +
+      '<td class="t-mono" style="font-size:11px;color:var(--text-muted);">' + (t.fallback.length ? t.fallback.join(' → ') : '— (no fallback · CEO-ONLY)') + '</td>' +
+      '<td class="t-mono">$' + t.maxCostUsd.toFixed(2) + '</td>' +
+      '<td class="t-body-sm muted">' + t.description + '</td>' +
+      '</tr>'
+    ).join('');
+    return (
+      '<div class="card">' +
+      '<header style="display:flex;justify-content:space-between;align-items:center;margin-bottom:var(--space-3);">' +
+        '<div>' +
+          '<h2 class="t-heading-md">4 Tiers hardcoded · F1</h2>' +
+          '<p class="t-body-sm muted">Fuente: <code>faberloom/config/llm_tiers.yaml</code> ' +
+          '· version <strong>' + (mock.llmTiersYamlVersion || '?') + '</strong> ' +
+          '· commit <code>' + (last.sha || '?') + '</code> por <strong>' + (last.author || '?') + '</strong></p>' +
+        '</div>' +
+        '<div style="display:flex;gap:var(--space-2);align-items:center;">' +
+          '<span class="chip chip-neutral">read-only en UI</span>' +
+          '<a class="btn btn-sm" href="' + (mock.llmTiersYamlUrl || '#') + '" target="_blank" rel="noopener">Ver en GitHub ↗</a>' +
+        '</div>' +
+      '</header>' +
+      '<table class="ali-table" aria-label="LLM tiers">' +
+        '<thead><tr><th>Tier</th><th>Primary model</th><th>Fallback chain</th><th>Max cost/call</th><th>Uso</th></tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+      '<div class="ali-info t-body-sm">' +
+        '<strong>¿Cómo se edita?</strong> Commit + PR al repo <code>mwt-knowledge-hub</code>, ' +
+        'path <code>faberloom/config/llm_tiers.yaml</code>. Hot-reload cada 60 s por LiteLLM. ' +
+        'Git history reemplaza el antiguo <code>routing_policy_version</code>. ' +
+        'Canonizado en <strong>DEC-006</strong> tras validación Kimi Swarm #4 (LOW confidence en adaptive).' +
+      '</div>' +
+      '</div>' +
+      '<div class="card" style="margin-top:var(--space-4);">' +
+        '<h3 class="t-heading-sm">Plans defaults (allowlist inicial por plan)</h3>' +
+        '<p class="t-body-sm muted">CEO edita durante el Cold Start (30 días). Admin del tenant toma control post día 30.</p>' +
+        '<table class="ali-table">' +
+          '<thead><tr><th>Plan</th><th>Models allowed</th><th>Nota</th></tr></thead>' +
+          '<tbody>' +
+            (mock.llmPlansDefaults || []).map(p =>
+              '<tr><td><strong>' + p.plan + '</strong></td>' +
+              '<td class="t-mono" style="font-size:11px;">' + p.models.join(' · ') + '</td>' +
+              '<td class="t-body-sm muted">' + (p.note || '—') + '</td></tr>'
+            ).join('') +
+          '</tbody>' +
+        '</table>' +
+      '</div>'
+    );
+  }
+
+  /* ═════════════════════════════════════════════════════════
+     TAB 2 · Data Residency (tenant_model_allowlist · hard block)
+     ═════════════════════════════════════════════════════════ */
+  function renderResidency() {
+    const mock = FL.mock;
+    const allowlist = mock.modelAllowlist || [];
+    const rows = allowlist.map(row => W.dataResidencyRow(row, { readOnly: (FL.session.role !== 'owner') })).join('');
+    return (
+      '<div class="card">' +
+      '<header>' +
+        '<h2 class="t-heading-md">Data Residency · tenant_model_allowlist</h2>' +
+        '<p class="t-body-sm muted">' +
+          '<strong>Hard block BEFORE tier check.</strong> Si un modelo no está en el allowlist del tenant ' +
+          '× data_classification del mensaje, el router rechaza con HTTP 403 <code>tenant_model_allowlist</code> ' +
+          'y emite <code>data_residency_block</code> en audit. Sin fallback, sin degradación silenciosa.' +
+        '</p>' +
+      '</header>' +
+      '<div class="ali-block-demo">' +
+        '<button type="button" class="btn btn-ghost btn-sm" data-action="simulate-block">▶ Simular hard-block CEO-ONLY → kimi_k2</button>' +
+      '</div>' +
+      '<table class="ali-table ali-dr-table" aria-label="Data residency allowlist">' +
+        '<thead><tr>' +
+          '<th>Classification</th>' +
+          '<th>Allowed providers</th>' +
+          '<th>Blocked regions</th>' +
+          '<th>Reason denied</th>' +
+          '<th>Updated</th>' +
+          '<th>Action</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>' +
+      '<div class="ali-info t-body-sm">' +
+        '<strong>Governance · 4 niveles:</strong> ' +
+        'PUBLIC (broad) · INTERNAL (sin CN por default) · CONFIDENTIAL (solo US/EU) · CEO_ONLY (Anthropic+Ollama). ' +
+        'CEO-ONLY está pending Q7 (¿también Kimi/DeepSeek?). Sugerido: <strong>Anthropic + Ollama only</strong>.' +
+      '</div>' +
+      '</div>'
+    );
+  }
+
+  function wireResidencyPane() {
+    const sim = root.querySelector('[data-action="simulate-block"]');
+    if (sim) sim.addEventListener('click', () => {
+      FL.bus.emit('toast', {
+        kind:'warn',
+        message:'❌ HTTP 403 · tenant_model_allowlist · CEO_ONLY data no puede rutear a kimi_k2 (provider=moonshot · CN).',
+        duration:6500
+      });
+    });
+    root.querySelectorAll('[data-dr-edit]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        FL.bus.emit('toast', {
+          kind:'info',
+          message:'Edit allowlist · durante Cold Start (primeros 30 días) solo CEO edita. Post día 30, admin del tenant gana edición.'
+        });
+      });
+    });
+  }
+
+  /* ═════════════════════════════════════════════════════════
+     TAB 3 · Circuit Breakers (2-level · Redis)
+     ═════════════════════════════════════════════════════════ */
+  function renderCircuitBreakers() {
+    const mock = FL.mock;
+    const cb = mock.circuitBreakers || {};
+    const th = cb.thresholds || {};
+    const providers = cb.providers || [];
+    const models    = cb.models    || [];
+
+    const pvRows = providers.map(p =>
+      '<tr>' +
+      '<td><span class="chip chip-neutral">' + p.id + '</span></td>' +
+      '<td>' + W.circuitBreakerLight(p.state) + '</td>' +
+      '<td class="t-mono">' + (p.errorRate * 100).toFixed(1) + '%</td>' +
+      '<td class="t-mono">' + p.p99Ms + 'ms</td>' +
+      '<td class="t-mono" style="font-size:10px;color:var(--text-muted);">' + p.redisKey + '</td>' +
+      '<td class="t-caption muted">' + (p.lastOpenedAt ? p.lastOpenedAt.slice(0,16).replace('T',' ') : '—') + '</td>' +
+      '</tr>'
+    ).join('');
+
+    const mdRows = models.map(m =>
+      '<tr>' +
+      '<td class="t-mono" style="font-size:11px;">' + m.id + '</td>' +
+      '<td>' + W.circuitBreakerLight(m.state) + '</td>' +
+      '<td class="t-mono">' + (m.errorRate * 100).toFixed(1) + '%</td>' +
+      '<td class="t-mono">' + m.p99Ms + 'ms</td>' +
+      '<td class="t-caption muted">' + m.provider + '</td>' +
+      '<td class="t-mono" style="font-size:10px;color:var(--text-muted);">' + m.redisKey + '</td>' +
+      '</tr>'
+    ).join('');
+
+    return (
+      '<div class="card">' +
+      '<header>' +
+        '<h2 class="t-heading-md">Circuit Breakers · 2-level (provider + model)</h2>' +
+        '<p class="t-body-sm muted">Redis-backed · abre al error rate ≥' + (th.openErrorRate*100) + '% / ' + th.openWindow + 'req ' +
+        '· half-open tras ' + th.halfOpenAfterSec + 's · cierra al <' + (th.closeErrorRate*100) + '% / ' + th.closeWindow + 'req. ' +
+        'Latencia p99 trigger ' + th.openLatencyP99Ms + 'ms · rate-limit 429 trigger tras ' + th.rateLimit429Consecutive + ' consecutivos.</p>' +
+      '</header>' +
+      '<div class="ali-cb-legend">' +
+        '<span>' + W.circuitBreakerLight('closed') + ' tráfico normal</span>' +
+        '<span>' + W.circuitBreakerLight('half_open') + ' probando recuperación</span>' +
+        '<span>' + W.circuitBreakerLight('open') + ' tripped · fallback activo</span>' +
+      '</div>' +
+      '<section class="ali-cb-section">' +
+        '<h3 class="t-heading-sm">Nivel 1 · Providers</h3>' +
+        '<table class="ali-table">' +
+          '<thead><tr><th>Provider</th><th>State</th><th>Err rate</th><th>p99</th><th>Redis key</th><th>Last tripped</th></tr></thead>' +
+          '<tbody>' + pvRows + '</tbody>' +
+        '</table>' +
+      '</section>' +
+      '<section class="ali-cb-section">' +
+        '<h3 class="t-heading-sm">Nivel 2 · Modelos</h3>' +
+        '<table class="ali-table">' +
+          '<thead><tr><th>Model</th><th>State</th><th>Err rate</th><th>p99</th><th>Provider</th><th>Redis key</th></tr></thead>' +
+          '<tbody>' + mdRows + '</tbody>' +
+        '</table>' +
+      '</section>' +
+      '<div class="ali-info t-body-sm">' +
+        '<strong>Fallback semantics:</strong> si primary abre, el router escala a siguiente modelo del tier. ' +
+        'Si <em>todos</em> los modelos del tier están open, devuelve <code>all_models_unavailable</code> (NO degradación silenciosa).' +
+      '</div>' +
+      '</div>'
+    );
+  }
+
+  /* ═════════════════════════════════════════════════════════
+     TAB 4 · HA LiteLLM
+     ═════════════════════════════════════════════════════════ */
+  function renderHaLitellm() {
+    const mock = FL.mock;
+    const ha = mock.haLitellm || {};
+    const obs = ha.observability || {};
+    return (
+      '<div class="card">' +
+      '<header>' +
+        '<h2 class="t-heading-md">HA LiteLLM · 2 instancias + HAProxy</h2>' +
+        '<p class="t-body-sm muted">F1 single-node (Q4 sugerido) · 2 instancias LiteLLM en el mismo KVM ' +
+        '+ HAProxy frontend con health check cada ' + (ha.haproxy ? ha.haproxy.healthCheckIntervalSec : '?') + 's. ' +
+        'Si failover &gt; 30s → pg-boss requeue + toast banner degradado.</p>' +
+      '</header>' +
+      '<div class="ali-ha-grid">' +
+        W.haStatusPill(ha.primary) +
+        '<div class="ali-ha-plus" aria-hidden="true">+</div>' +
+        W.haStatusPill(ha.backup) +
+      '</div>' +
+      '<div class="ali-ha-haproxy">' +
+        '<strong>HAProxy</strong> · ' + (ha.haproxy ? ha.haproxy.frontend : '?') + ' · ' +
+        '<span class="chip ' + (ha.haproxy && ha.haproxy.status==='ok' ? 'chip-success' : 'chip-danger') + '">' +
+          (ha.haproxy && ha.haproxy.status==='ok' ? 'OK' : 'degraded') +
+        '</span>' +
+        ' · last check <span class="t-mono">' + (ha.haproxy ? ha.haproxy.lastCheck.slice(11,19) : '?') + '</span>' +
+      '</div>' +
+      '<div class="ali-info t-body-sm">' +
+        '<strong>Shared Fernet key:</strong> <code>' + (ha.sharedFernetKeyMount || '—') + '</code> ' +
+        '(no hardcoded · docker secret mount · misma key ambas instancias).<br>' +
+        '<strong>Observabilidad:</strong> Langfuse en <code>' + (obs.langfuseUrl || '—') + '</code> · ' +
+        'Prometheus exporter <code>' + (obs.prometheusExporter || '—') + '</code>.' +
+      '</div>' +
+      (ha.failoverActive
+        ? '<div class="ali-banner-fail t-body-sm">⚠ Failover activo · primary degradado · todo el tráfico por backup. pg-boss requeue activo.</div>'
+        : '<div class="ali-banner-ok t-body-sm">✓ Stack healthy · primary routing · sin requeue activo.</div>') +
+      '</div>'
+    );
+  }
+
+  /* ═════════════════════════════════════════════════════════
+     TAB 5 · Cold Start
+     ═════════════════════════════════════════════════════════ */
+  function renderColdStart() {
+    const mock = FL.mock;
+    const cs = mock.coldStart || {};
+    return (
+      '<div class="card">' +
+      W.coldStartBanner(cs) +
+      '<h2 class="t-heading-md">Cold Start · 30 días exploración manual</h2>' +
+      '<div class="ali-cs-grid">' +
+        '<div class="ali-cs-cell"><span class="t-label-sm muted">Started at</span><div class="t-mono">' + (cs.startedAt || '—') + '</div></div>' +
+        '<div class="ali-cs-cell"><span class="t-label-sm muted">Days elapsed</span><div class="t-display-sm">' + cs.daysElapsed + '</div></div>' +
+        '<div class="ali-cs-cell"><span class="t-label-sm muted">Days remaining</span><div class="t-display-sm">' + cs.daysRemaining + '</div></div>' +
+        '<div class="ali-cs-cell"><span class="t-label-sm muted">Review cadence</span><div class="t-mono">' + (cs.ceoReviewCadence || '—') + '</div></div>' +
+        '<div class="ali-cs-cell"><span class="t-label-sm muted">Samples today</span><div class="t-display-sm">' + (cs.samplesReviewedToday || 0) + '</div></div>' +
+        '<div class="ali-cs-cell"><span class="t-label-sm muted">Samples total</span><div class="t-display-sm">' + (cs.samplesReviewedTotal || 0) + '</div></div>' +
+      '</div>' +
+      '<div class="ali-info t-body-sm">' +
+        '<strong>Durante Cold Start:</strong> allowlist editable solo por <code>' + (cs.allowlistEditableBy || 'CEO') + '</code>. ' +
+        '<strong>Post día 30:</strong> ' + (cs.postDayBehavior || '—') + '.' +
+      '</div>' +
+      '</div>'
+    );
+  }
+
+  /* ═════════════════════════════════════════════════════════
+     TAB 6 · Voice Profile (6º Add-on · per-tenant)
+     ═════════════════════════════════════════════════════════ */
+  function renderVoiceProfile() {
+    const vp = FL.mock.voiceProfile || {};
+    const blocked = (vp.blockedTerms || []).map(x => '<span class="chip chip-danger">' + x + '</span>').join(' ');
+    const preferred = (vp.preferredTerms || []).map(x =>
+      '<span class="chip"><code>' + x.from + '</code> → <strong>' + x.to + '</strong></span>'
+    ).join(' ');
+    return (
+      '<div class="card">' +
+      '<header>' +
+        '<h2 class="t-heading-md">Voice Profile · 6º Add-on ' + W.pendingCeoFlag('Q1', 'per-tenant F1 o per-user F2', 'per-tenant F1 solo owner edita') + '</h2>' +
+        '<p class="t-body-sm muted">Reemplaza Arena Mode (descartado de F1 en DEC-007). ' +
+        'Tenant-level · owner edita · aplicado como system_prompt overlay global. ' +
+        'En Skills Sealed se aplica como <strong>overlay</strong> (no toca base sealed). ' +
+        'En Skills Open es parte del <strong>fork editable</strong>.</p>' +
+      '</header>' +
+      '<div class="ali-vp-grid">' +
+        '<label class="ali-vp-cell"><span class="t-label-sm">Tone</span>' +
+          '<select class="select" data-vp-fld="tone">' +
+            (vp.toneOptions || []).map(o => '<option value="' + o + '"' + (o === vp.tone ? ' selected' : '') + '>' + o + '</option>').join('') +
+          '</select>' +
+        '</label>' +
+        '<label class="ali-vp-cell"><span class="t-label-sm">Primary language</span>' +
+          '<select class="select" data-vp-fld="primaryLanguage">' +
+            (vp.languageOptions || []).map(o => '<option value="' + o + '"' + (o === vp.primaryLanguage ? ' selected' : '') + '>' + o + '</option>').join('') +
+          '</select>' +
+        '</label>' +
+        '<div class="ali-vp-cell ali-vp-cell--wide">' +
+          '<span class="t-label-sm">Blocked terms</span>' +
+          '<div class="ali-vp-chipbox">' + (blocked || '<em class="muted">—</em>') + '</div>' +
+        '</div>' +
+        '<div class="ali-vp-cell ali-vp-cell--wide">' +
+          '<span class="t-label-sm">Preferred substitutions</span>' +
+          '<div class="ali-vp-chipbox">' + (preferred || '<em class="muted">—</em>') + '</div>' +
+        '</div>' +
+        '<label class="ali-vp-cell ali-vp-cell--wide">' +
+          '<span class="t-label-sm">Default signature</span>' +
+          '<textarea class="input" rows="3" data-vp-fld="defaultSignature">' + (vp.defaultSignature || '') + '</textarea>' +
+        '</label>' +
+      '</div>' +
+      '<div class="ali-info t-body-sm">' +
+        '<strong>Sealed skills:</strong> ' + (vp.sealedBehavior || '—') + '<br>' +
+        '<strong>Open skills:</strong> ' + (vp.openBehavior || '—') +
+      '</div>' +
+      '<div style="display:flex;gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-3);">' +
+        '<button class="btn btn-primary btn-sm" data-action="vp-save">Guardar</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="vp-preview">Ver preview sobre draft actual</button>' +
+      '</div>' +
+      '</div>'
+    );
+  }
+
+  function wireVoicePane() {
+    const save = root.querySelector('[data-action="vp-save"]');
+    const prev = root.querySelector('[data-action="vp-preview"]');
+    if (save) save.addEventListener('click', () => {
+      FL.mock.auditEvents && FL.mock.auditEvents.unshift({
+        id:'ae_' + Date.now(), ts:new Date().toISOString(), actorId:FL.session.userId,
+        kind:'voice_profile_update', level:'INFO', resourceType:'voice_profile', resourceId:FL.session.tenantId,
+        summary:'Voice profile updated (tenant-level)'
+      });
+      FL.bus.emit('toast', { kind:'success', message:'Voice profile guardado · overlay global aplicado en drafts nuevos.' });
+    });
+    if (prev) prev.addEventListener('click', () => {
+      FL.bus.emit('toast', { kind:'info', message:'Preview · aplicaría tono + substituciones sobre último draft bandeja.' });
+    });
+  }
+
+  /* ═════════════════════════════════════════════════════════
+     TAB 7 · Q1-Q18 Open Questions (escondible)
+     ═════════════════════════════════════════════════════════ */
+  function renderOpenQuestions() {
+    const qs = FL.mock.openQuestionsQ1Q18 || [];
+    const groups = { P0: [], P1: [], P2: [] };
+    qs.forEach(q => { (groups[q.priority] || groups.P2).push(q); });
+
+    const groupHtml = (pri, items) => {
+      const count = items.length;
+      return (
+        '<details class="ali-q-group" data-pri="' + pri + '"' + (pri === 'P0' ? ' open' : '') + '>' +
+          '<summary>' +
+            '<strong>' + pri + '</strong> · ' + count + ' pendiente' + (count !== 1 ? 's' : '') +
+          '</summary>' +
+          '<table class="ali-table ali-q-table">' +
+            '<thead><tr><th>ID</th><th>Area</th><th>Pending</th><th>Suggested</th><th>Unblocks</th></tr></thead>' +
+            '<tbody>' +
+              items.map(q =>
+                '<tr>' +
+                '<td>' + W.pendingCeoFlag(q.id, q.pending, q.suggestedAnswer) + '</td>' +
+                '<td><code class="t-mono" style="font-size:11px;">' + q.area + '</code></td>' +
+                '<td class="t-body-sm">' + q.pending + '</td>' +
+                '<td class="t-body-sm" style="color:var(--status-success);">' + q.suggestedAnswer + '</td>' +
+                '<td class="t-caption muted">' + q.unblocks + '</td>' +
+                '</tr>'
+              ).join('') +
+            '</tbody>' +
+          '</table>' +
+        '</details>'
+      );
+    };
+
+    return (
+      '<div class="card">' +
+      '<header>' +
+        '<h2 class="t-heading-md">Open Questions Q1-Q18 · pending CEO</h2>' +
+        '<p class="t-body-sm muted">' +
+          '<strong>7× P0</strong> (bloquean F1) · <strong>6× P1</strong> (bloquean F2 gate) · <strong>5× P2</strong> (roadmap).<br>' +
+          'Cada ⚠ en la UI linkea a la row correspondiente aquí.' +
+        '</p>' +
+      '</header>' +
+      '<div class="ali-q-controls">' +
+        '<button class="btn btn-ghost btn-sm" data-action="q-collapse-all">⊟ Cerrar todos</button>' +
+        '<button class="btn btn-ghost btn-sm" data-action="q-expand-all">⊞ Abrir todos</button>' +
+      '</div>' +
+      groupHtml('P0', groups.P0) +
+      groupHtml('P1', groups.P1) +
+      groupHtml('P2', groups.P2) +
+      '</div>'
+    );
+  }
+
+  function wireQuestionsPane() {
+    const ca = root.querySelector('[data-action="q-collapse-all"]');
+    const ea = root.querySelector('[data-action="q-expand-all"]');
+    if (ca) ca.addEventListener('click', () => root.querySelectorAll('.ali-q-group').forEach(d => d.removeAttribute('open')));
+    if (ea) ea.addEventListener('click', () => root.querySelectorAll('.ali-q-group').forEach(d => d.setAttribute('open','')));
+  }
+
+  /* ═════════════════════════════════════════════════════════
+     TAB 8 · F2 Roadmap (muted cards · NO implementar)
+     ═════════════════════════════════════════════════════════ */
+  function renderF2Roadmap() {
+    const cards = FL.mock.f2Roadmap || [];
+    return (
+      '<div class="card">' +
+      '<header>' +
+        '<h2 class="t-heading-md">F2 Roadmap · Coming in F2</h2>' +
+        '<p class="t-body-sm muted">' +
+          '<strong>Gated</strong> a 3 tenants × 5,000 drafts/mes × 3 meses sostenido (DEC-008). ' +
+          'No hay UI implementada de estas capacidades en F1 — solo este roadmap visible.' +
+        '</p>' +
+      '</header>' +
+      '<div class="ali-f2-grid">' +
+        cards.map(c => W.f2MutedCard(c)).join('') +
+      '</div>' +
+      '<div class="ali-info t-body-sm">' +
+        '<strong>Por qué F1 ≠ F2:</strong> Kimi Swarm #4 arrojó LOW confidence para adaptive en F1 ' +
+        '(break-even 9,524 drafts/mes vs beta 600 · N≥20 power 6.5% · pesos heurísticos sin fundamento). ' +
+        'F1 canoniza tiered hardcoded (DEC-006) · Arena descartado (DEC-007) · F2 postpuesto gated (DEC-008).' +
+      '</div>' +
+      '</div>'
+    );
+  }
+
+  /* ─── styles (scoped) ───────────────────────────────────── */
+  function injectStyles() {
+    if (document.getElementById('fl-ali-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'fl-ali-styles';
+    s.textContent = `
+.ali-wrap { padding: var(--space-6) var(--space-8); max-width: 1280px; margin: 0 auto; display: flex; flex-direction: column; gap: var(--space-4); }
+.ali-header { display:flex; justify-content:space-between; align-items:flex-start; gap:var(--space-4); flex-wrap:wrap; }
+.ali-header__status { display:flex; gap:var(--space-2); flex-wrap:wrap; }
+.ali-tabs { display:flex; gap:2px; border-bottom:2px solid var(--stroke-default); margin-bottom:var(--space-3); overflow-x:auto; }
+.ali-tab { background:transparent; border:0; border-bottom:2px solid transparent; padding:var(--space-2) var(--space-3); cursor:pointer; font-size:13px; color:var(--text-secondary); white-space:nowrap; margin-bottom:-2px; }
+.ali-tab:hover { color:var(--text-primary); }
+.ali-tab--active { color:var(--accent-primary); border-bottom-color:var(--accent-primary); font-weight:600; }
+.ali-pane { animation: ali-pane-in 200ms var(--ease-out); }
+@keyframes ali-pane-in { from { opacity:0; transform:translateY(4px); } to { opacity:1; transform:none; } }
+.ali-table { width:100%; border-collapse:collapse; margin-top:var(--space-2); font-size:13px; }
+.ali-table th { text-align:left; padding:var(--space-2) var(--space-3); background:var(--bg-subtle); border-bottom:1px solid var(--stroke-strong); font-size:11px; font-weight:600; letter-spacing:0.06em; text-transform:uppercase; color:var(--text-muted); }
+.ali-table td { padding:var(--space-2) var(--space-3); border-bottom:1px solid var(--stroke-default); vertical-align:top; }
+.ali-info { margin-top:var(--space-4); padding:var(--space-3) var(--space-4); background:var(--bg-subtle); border-left:3px solid var(--status-info); border-radius:var(--radius-sm); color:var(--text-secondary); }
+.ali-block-demo { padding:var(--space-2) 0; margin-bottom:var(--space-3); }
+.ali-cb-legend { display:flex; gap:var(--space-4); padding:var(--space-3); background:var(--bg-subtle); border-radius:var(--radius-md); margin-bottom:var(--space-4); flex-wrap:wrap; align-items:center; }
+.ali-cb-legend > span { display:flex; align-items:center; gap:var(--space-2); font-size:12px; color:var(--text-secondary); }
+.ali-cb-section { margin-bottom:var(--space-4); }
+.ali-cb-section h3 { margin-bottom:var(--space-1); }
+.ali-ha-grid { display:flex; gap:var(--space-3); align-items:stretch; margin:var(--space-3) 0; flex-wrap:wrap; }
+.ali-ha-plus { font-size:24px; font-weight:300; color:var(--text-muted); display:flex; align-items:center; }
+.ali-ha-haproxy { padding:var(--space-3); background:var(--bg-subtle); border-radius:var(--radius-md); margin-bottom:var(--space-3); display:flex; gap:var(--space-2); align-items:center; flex-wrap:wrap; }
+.ali-banner-ok { padding:var(--space-2) var(--space-3); background:var(--status-success-soft); border-left:3px solid var(--status-success); border-radius:var(--radius-sm); margin-top:var(--space-3); color:var(--text-secondary); }
+.ali-banner-fail { padding:var(--space-2) var(--space-3); background:var(--status-danger-soft); border-left:3px solid var(--status-danger); border-radius:var(--radius-sm); margin-top:var(--space-3); color:var(--text-primary); font-weight:600; }
+.ali-cs-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:var(--space-3); margin:var(--space-3) 0; }
+.ali-cs-cell { padding:var(--space-3); background:var(--bg-subtle); border-radius:var(--radius-md); display:flex; flex-direction:column; gap:4px; }
+.ali-vp-grid { display:grid; grid-template-columns:repeat(2, 1fr); gap:var(--space-3); margin:var(--space-3) 0; }
+.ali-vp-cell { display:flex; flex-direction:column; gap:4px; }
+.ali-vp-cell--wide { grid-column:1 / -1; }
+.ali-vp-chipbox { display:flex; flex-wrap:wrap; gap:var(--space-1); padding:var(--space-2); background:var(--bg-subtle); border-radius:var(--radius-sm); min-height:32px; }
+.ali-q-controls { display:flex; gap:var(--space-2); margin-bottom:var(--space-3); }
+.ali-q-group { margin-bottom:var(--space-3); background:var(--bg-subtle); border-radius:var(--radius-md); padding:var(--space-2) var(--space-3); }
+.ali-q-group summary { cursor:pointer; font-size:13px; padding:var(--space-1) 0; }
+.ali-q-table th, .ali-q-table td { font-size:12px; }
+.ali-f2-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(320px, 1fr)); gap:var(--space-4); margin-top:var(--space-3); }
+    `;
+    document.head.appendChild(s);
+  }
+
+  /* ─── Boot hook: inject styles once when module registers ─ */
+  injectStyles();
+
+  FL.modules['admin-llm-infra'] = { mount, meta: { route: '/admin/llm-orchestration' } };
+})();
+</script>

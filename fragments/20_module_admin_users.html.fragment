@@ -1,0 +1,157 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null;
+
+  function mount(slot) {
+    root = slot; injectStyles();
+    if (FL.session.role === 'operator') {
+      root.innerHTML = W.degradedCard('admin-users', new Error(i18n.t('admin.users_title') + ': Sin permisos (role=operator)'));
+      return { unmount: () => { if (root) root.innerHTML = ''; } };
+    }
+    render();
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  function render() {
+    const t = k => i18n.t(k);
+    const users = FL.mock.users;
+    root.innerHTML =
+      '<div class="au-wrap">' +
+        '<header class="au-head"><h1 class="t-display-md">' + t('admin.users_title') + '</h1>' +
+        '<div><button class="btn" data-act="bg">⚠ ' + t('admin.break_glass') + '</button> ' +
+        '<button class="btn btn-primary">＋ ' + t('admin.users_invite') + '</button></div></header>' +
+        '<p class="muted t-body-sm">' + t('admin.private_by_default') + ' · ' + t('admin.break_glass_warn') + '</p>' +
+        /* [V3-PATCH 2026-04-19] Mi perfil + descarga LGPD/LFPDPPP */
+        '<section class="au-myprofile card">' +
+          '<h3 class="t-heading-md">📥 Mis datos · LGPD / LFPDPPP / Ley 1581 / Ley 29733</h3>' +
+          '<p class="t-body-sm">Como usuario tenés derecho a portabilidad de datos en LATAM. Descargá un .zip con: tus conversaciones · drafts owned · feedbacks · user-private memory chunks · tus audit events.</p>' +
+          '<div class="row" style="gap:var(--space-2);">' +
+            '<button class="btn btn-primary" data-act="my-data-download">📥 Descargar mis datos (JSON)</button>' +
+            '<span class="muted t-body-sm">Aprox 2.4 MB · incluye 8 conversaciones + 14 drafts + 8 feedbacks + 12 audit events tuyos</span>' +
+          '</div>' +
+        '</section>' +
+        '<table class="au-table"><thead><tr><th>' + t('admin.users_col_name') + '</th><th>' + t('admin.users_col_email') + '</th><th>' + t('admin.users_col_role') + '</th><th>' + t('admin.users_col_dept') + '</th><th>' + t('admin.users_col_last') + '</th><th></th></tr></thead>' +
+        '<tbody>' + users.map(u => (
+          '<tr><td><strong>' + u.name + '</strong></td><td class="mono muted">' + u.email + '</td>' +
+          '<td><span class="chip chip-accent">' + u.role + '</span></td>' +
+          '<td>' + u.deptIds.map(d => '<span class="chip">' + d.replace('d_', '') + '</span>').join(' ') + '</td>' +
+          '<td class="mono muted">' + u.lastActive + '</td>' +
+          '<td><button class="btn btn-sm btn-ghost" data-edit="' + u.id + '">Editar</button></td></tr>'
+        )).join('') + '</tbody></table>' +
+      '</div>';
+
+    const bg = root.querySelector('[data-act="bg"]');
+    if (bg) bg.addEventListener('click', () => {
+      if (confirm(t('admin.break_glass_warn') + '\n\n' + t('admin.break_glass') + '?')) {
+        FL.session.activateBreakGlass(8);
+      }
+    });
+
+    /* [V2-PATCH 2026-04-19] wire edit flow */
+    root.querySelectorAll('[data-edit]').forEach(b => {
+      b.addEventListener('click', () => openEditModal(b.getAttribute('data-edit')));
+    });
+    /* [V3-PATCH 2026-04-19] LGPD download */
+    const dl = root.querySelector('[data-act="my-data-download"]');
+    if (dl) dl.addEventListener('click', () => {
+      const u = FL.session.userId;
+      const payload = {
+        exportedAt: new Date().toISOString(),
+        exportedBy: u,
+        regulation_basis: ['LGPD (BR)', 'LFPDPPP (MX)', 'Ley 1581 (CO)', 'Ley 29733 (PE)'],
+        format: 'JSON v1',
+        user: (FL.mock.users || []).find(x => x.id === u),
+        conversations: (FL.mock.conversations || []).filter(c => c.tenantId === FL.session.tenantId),
+        my_drafts: (FL.mock.drafts || []).filter(d => d.tenantId === FL.session.tenantId).slice(0, 14),
+        my_feedbacks: (FL.mock.feedbacks || []).filter(f => f.userId === u),
+        my_audit_events: (FL.mock.auditEvents || []).filter(e => e.actor === u).slice(0, 12),
+        user_private_memory: '(filtered to user-private scope only · no org/global data)',
+        excludes: ['ceo_only data (unless owner)', 'other users data', 'sensitive infra metadata']
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = 'faberloom_my_data_' + u + '_' + new Date().toISOString().slice(0, 10) + '.json';
+      a.click(); URL.revokeObjectURL(url);
+      FL.mock.auditEvents.unshift({ id:'ae_' + Date.now(), ts:new Date().toISOString(), tenantId:FL.session.tenantId, actor:u, action:'user.data_exported', target:u, severity:'INFO', ip:'10.0.0.1', userAgent:'FaberLoom/1.0' });
+      FL.bus.emit('toast', { kind:'success', message:'✓ Mis datos descargados · audit_event user.data_exported registrado' });
+    });
+  }
+
+  /* [V2-PATCH 2026-04-19] Edit user modal */
+  function openEditModal(userId) {
+    const u = FL.mock.users.find(x => x.id === userId);
+    if (!u) return;
+    const t = k => i18n.t(k);
+    const roleOpts = ['owner','admin','operator'].map(r => '<option value="' + r + '"' + (u.role === r ? ' selected' : '') + '>' + r + '</option>').join('');
+    const deptOpts = FL.mock.departments.map(d => '<option value="' + d.id + '"' + (u.deptIds.indexOf(d.id) >= 0 ? ' selected' : '') + '>' + d.name + '</option>').join('');
+    const beOpts   = FL.mock.businessEntities.map(b => '<option value="' + b.id + '">' + b.name + '</option>').join('');
+    const bgActive = FL.session.isBreakGlassActive();
+    const bgCountdown = bgActive ? Math.ceil((FL.session.breakGlassUntil - Date.now()) / 60000) + ' min restantes' : '';
+
+    W.openModal(
+      '<h2 id="fl-modal-title" class="t-heading-lg" style="margin:0 0 var(--space-3);">Editar usuario · ' + u.name + '</h2>' +
+      '<form class="au-edit-form">' +
+        '<label class="au-fld"><span class="t-label-sm">Rol</span><select class="select" name="role">' + roleOpts + '</select></label>' +
+        '<label class="au-fld"><span class="t-label-sm">Departamentos</span><select class="select" name="depts" multiple size="3">' + deptOpts + '</select></label>' +
+        '<label class="au-fld"><span class="t-label-sm">Business entities visibles</span><select class="select" name="bes" multiple size="3">' + beOpts + '</select></label>' +
+        '<label class="au-fld"><span class="t-label-sm">Scope knowledge default</span><select class="select" name="scope">' +
+          ['user','dept','org','global'].map(s => '<option value="' + s + '">' + t('admin.knowledge_scope_' + s) + '</option>').join('') + '</select></label>' +
+        '<label class="au-fld au-fld--inline"><input type="checkbox" name="bg"' + (bgActive ? ' checked' : '') + ' ' + (u.role !== 'owner' ? 'disabled' : '') + '/> ' +
+          'Break-glass activo ' + (bgActive ? '<span class="chip chip-warning">' + bgCountdown + '</span>' : '<span class="muted t-body-sm">(8h máx, MFA)</span>') +
+        '</label>' +
+      '</form>' +
+      '<div style="display:flex;gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-4);">' +
+        '<button class="btn" data-au-act="cancel">Cancelar</button>' +
+        '<button class="btn btn-primary" data-au-act="save">Guardar</button>' +
+      '</div>',
+      { width: 540 }
+    );
+
+    document.querySelector('[data-au-act="cancel"]').addEventListener('click', () => W.closeModal());
+    document.querySelector('[data-au-act="save"]').addEventListener('click', () => {
+      const form = document.querySelector('.au-edit-form');
+      const role = form.role.value;
+      const newDepts = Array.from(form.depts.selectedOptions).map(o => o.value);
+      const before = { role: u.role, deptIds: u.deptIds.slice() };
+      u.role = role;
+      u.deptIds = newDepts;
+      // Append audit event
+      FL.mock.auditEvents.unshift({
+        id: 'ae_' + Date.now(), ts: new Date().toISOString(), tenantId: u.tenantId,
+        actor: FL.session.userId, action: 'user.role_changed', target: u.id,
+        severity: 'INFO', ip: '10.0.0.1', userAgent: 'FaberLoom/1.0',
+        beforeState: JSON.stringify(before), afterState: JSON.stringify({ role, deptIds: newDepts })
+      });
+      W.closeModal();
+      FL.bus.emit('toast', { kind: 'success', message: 'Cambios guardados · audit event registrado' });
+      render();
+    });
+  }
+
+  function injectStyles() {
+    if (document.getElementById('au-styles')) return;
+    const s = document.createElement('style'); s.id = 'au-styles';
+    s.textContent = `
+.au-wrap { display:flex; flex-direction:column; gap:var(--space-3); }
+.au-head { display:flex; justify-content:space-between; align-items:flex-end; gap:var(--space-3); flex-wrap:wrap; }
+.au-head h1 { margin:0; }
+.au-table { width:100%; border-collapse:collapse; background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-lg); overflow:hidden; font-size:13px; }
+.au-table th, .au-table td { padding:var(--space-2) var(--space-3); text-align:left; border-bottom:1px solid var(--stroke-default); }
+.au-table th { font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); font-weight:600; background:var(--bg-subtle); }
+/* [V2-PATCH 2026-04-19] edit form styles */
+.au-edit-form { display:flex; flex-direction:column; gap:var(--space-3); }
+.au-fld { display:flex; flex-direction:column; gap:var(--space-1); }
+.au-fld--inline { flex-direction:row; align-items:center; gap:var(--space-2); }
+/* [V3-PATCH] LGPD self-service */
+.au-myprofile { padding:var(--space-4); border-left:3px solid var(--brand-coral); display:flex; flex-direction:column; gap:var(--space-2); }
+.au-myprofile h3 { margin:0; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['admin-users'] = { mount, meta: { route: '/admin/usuarios' } };
+})();
+</script>

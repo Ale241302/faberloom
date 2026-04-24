@@ -1,0 +1,292 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  /* [V3-PATCH 2026-04-19] polymorphic bandeja: 12 item kinds + saved-views */
+  let state = { view: 'attention', filterState: 'all', filterAgent: 'all', filterEntity: 'all', selected: new Set() };
+  let root = null;
+
+  /* Item kind config: icon, color var, label key, route prefix */
+  const KIND_CFG = {
+    draft:             { icon:'✎',  color:'var(--draft-pending)',     labelKey:'bandeja.kind.draft',             pfx:'#/bandeja/' },
+    inbound_email:     { icon:'✉',  color:'var(--brand-sky)',          labelKey:'bandeja.kind.inbound_email',     pfx:'#/bandeja/' },
+    inbound_msg:       { icon:'💬', color:'var(--brand-lilac)',        labelKey:'bandeja.kind.inbound_msg',       pfx:'#/bandeja/' },
+    crm_event:         { icon:'⚲',  color:'var(--brand-amber)',        labelKey:'bandeja.kind.crm_event',         pfx:'#/bandeja/' },
+    alert:             { icon:'⚠',  color:'var(--status-warning)',     labelKey:'bandeja.kind.alert',             pfx:'#/bandeja/' },
+    approval_request:  { icon:'⚏',  color:'var(--brand-coral)',        labelKey:'bandeja.kind.approval_request',  pfx:'#/bandeja/' },
+    escalation:        { icon:'↑',  color:'var(--brand-evidence)',     labelKey:'bandeja.kind.escalation',        pfx:'#/bandeja/' },
+    feedback_reply:    { icon:'⤷',  color:'var(--brand-sage)',          labelKey:'bandeja.kind.feedback_reply',    pfx:'#/bandeja/' },
+    sla_timer:         { icon:'⌚', color:'var(--status-warning)',     labelKey:'bandeja.kind.sla_timer',         pfx:'#/bandeja/' },
+    webhook:           { icon:'⚡', color:'var(--brand-mist)',          labelKey:'bandeja.kind.webhook',           pfx:'#/bandeja/' },
+    audit_alert:       { icon:'🔒', color:'var(--brand-evidence)',     labelKey:'bandeja.kind.audit_alert',       pfx:'#/bandeja/' },
+    task:              { icon:'☐',  color:'var(--brand-sage)',          labelKey:'bandeja.kind.task',              pfx:'#/bandeja/' }
+  };
+
+  /* Saved views: filter predicate per view */
+  const VIEWS = {
+    attention: { labelKey:'bandeja.view.attention', icon:'⚡', pred:i => i.urgency >= 2 },
+    triage:    { labelKey:'bandeja.view.triage',    icon:'⊕', pred:i => i._raw.state === 'untriaged' || i.kind === 'inbound_email' || i.kind === 'inbound_msg' },
+    approve:   { labelKey:'bandeja.view.approve',   icon:'✓', pred:i => i.kind === 'draft' && (i._raw.state === 'awaiting_approval') },
+    mine:      { labelKey:'bandeja.view.mine',      icon:'◎', pred:i => (i._raw.assignedTo === FL.session.userId) || (i.kind === 'draft' && i._raw.tenantId === FL.session.tenantId) },
+    team:      { labelKey:'bandeja.view.team',      icon:'⚙', pred:i => true },
+    all:       { labelKey:'common.view',            icon:'≡', pred:i => true }
+  };
+
+  function mount(slot, ctx) {
+    root = slot;
+    injectStyles();
+    /* parse ?view=X from URL */
+    if (ctx && ctx.query && ctx.query.view && VIEWS[ctx.query.view]) state.view = ctx.query.view;
+    render();
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  /* Unified item normalizer: drafts + inboxItems → common shape */
+  function unifiedItems() {
+    const items = [];
+    /* drafts as kind='draft' */
+    (FL.mock.drafts || []).forEach(d => {
+      const ag = FL.mock.agents.find(a => a.id === d.agentId);
+      items.push({
+        id:        d.id,
+        kind:      'draft',
+        subject:   d.subject || '—',
+        sender:    ag ? ag.name : '—',
+        recipient: (d.recipient && d.recipient.name) || '—',
+        state:     d.state,
+        risk:      d.action,
+        createdAt: d.createdAt,
+        urgency:   urgencyDraft(d),
+        agentId:   d.agentId,
+        businessEntityId: d.businessEntityId,
+        _raw:      d
+      });
+    });
+    /* inbox items */
+    (FL.mock.inboxItems || []).forEach(i => {
+      /* visibility filter: audit_alert solo admin/owner */
+      if (i.visibleToRoles && i.visibleToRoles.indexOf(FL.session.role) < 0) return;
+      items.push({
+        id:        i.id,
+        kind:      i.kind,
+        subject:   i.subject,
+        sender:    (i.from && i.from.name) || '—',
+        recipient: (i.from && (i.from.email || i.from.phone || i.from.channel)) || '—',
+        state:     i.state,
+        priority:  i.priority,
+        risk:      null,
+        createdAt: i.receivedAt || i.createdAt,
+        dueAt:     i.dueAt,
+        urgency:   urgencyInbox(i),
+        agentId:   i.assignedAgentId || (i.from && i.from.agentId) || null,
+        businessEntityId: i.businessEntityId,
+        _raw:      i
+      });
+    });
+    return items;
+  }
+
+  function urgencyDraft(d) {
+    if (d.state === 'failed' || d.state === 'escalated' || d.state === 'blocked') return 3;
+    if (d.action && String(d.action.reversibility || '').startsWith('irreversible')) return 3;
+    if (d.state === 'awaiting_approval') return 2;
+    return 1;
+  }
+  function urgencyInbox(i) {
+    if (i.priority === 'high') return 3;
+    if (i.priority === 'normal') return 2;
+    return 1;
+  }
+
+  function render() {
+    const t = k => i18n.t(k);
+    const all = unifiedItems();
+    /* apply saved-view filter first */
+    let items = all.filter(VIEWS[state.view].pred);
+    /* then secondary filters */
+    items = items.filter(i => {
+      if (state.filterState !== 'all' && i.state !== state.filterState) return false;
+      if (state.filterAgent !== 'all' && i.agentId !== state.filterAgent) return false;
+      if (state.filterEntity !== 'all' && i.businessEntityId !== state.filterEntity) return false;
+      return true;
+    });
+    /* sort by urgency desc, then by age desc */
+    items.sort((a, b) => (b.urgency - a.urgency) || (Date.parse(b.createdAt || 0) - Date.parse(a.createdAt || 0)));
+
+    /* segments / saved-view tabs */
+    const segments = Object.keys(VIEWS).map(v => {
+      const cnt = all.filter(VIEWS[v].pred).length;
+      return '<button class="bl-seg' + (state.view === v ? ' bl-seg--active' : '') + '" data-view="' + v + '">' +
+        '<span aria-hidden="true">' + VIEWS[v].icon + '</span> ' + t(VIEWS[v].labelKey) +
+        ' <span class="bl-seg__cnt">' + cnt + '</span></button>';
+    }).join('');
+
+    const agentOpts = '<option value="all">— Todos —</option>' + FL.mock.agents.map(a => '<option value="' + a.id + '">' + a.name + '</option>').join('');
+    const stateOpts = '<option value="all">— Todos —</option>' + ['drafting','awaiting_approval','approved','executing','waiting_external_signal','blocked','completed','failed','escalated','rejected','untriaged','assigned','pending','pending_my_approval','acknowledged'].map(s => '<option value="' + s + '">' + i18n.t('states.' + s, s) + '</option>').join('');
+    const entityOpts = '<option value="all">— Todos —</option>' + FL.mock.businessEntities.map(b => '<option value="' + b.id + '">' + b.name + '</option>').join('');
+
+    root.innerHTML =
+      '<div class="bl-wrap">' +
+      '<header class="bl-head">' +
+        '<h1 class="t-display-md">' + t('bandeja.title') + '</h1>' +
+        '<p class="t-body-md muted">' + t('bandeja.subtitle_v3', 'Workspace unificado · 12 tipos de items + saved views') + '</p>' +
+      '</header>' +
+      '<div class="bl-segments" role="tablist">' + segments + '</div>' +
+      '<div class="bl-filters card">' +
+        '<label><span class="t-label-sm">' + t('bandeja.filter_state') + '</span><select class="select" data-f="filterState">' + stateOpts + '</select></label>' +
+        '<label><span class="t-label-sm">' + t('bandeja.filter_agent') + '</span><select class="select" data-f="filterAgent">' + agentOpts + '</select></label>' +
+        '<label><span class="t-label-sm">' + t('bandeja.filter_entity') + '</span><select class="select" data-f="filterEntity">' + entityOpts + '</select></label>' +
+      '</div>' +
+      (state.selected.size > 0 ? (
+        '<div class="bl-bulk">' +
+        '<span class="t-label-sm">' + state.selected.size + ' ' + t('bulk.select_all', 'seleccionados') + '</span>' +
+        '<button class="btn btn-sm btn-primary" data-bulk="approve">' + t('bulk.approve_selected', 'Aprobar seleccionados') + '</button>' +
+        '<button class="btn btn-sm btn-ghost" data-bulk="clear">' + t('common.clear') + '</button>' +
+        '</div>'
+      ) : '') +
+      (items.length === 0
+        ? W.emptyState({ title: t('bandeja.empty_filtered'), icon: '○' })
+        : '<table class="bl-table">' +
+            '<thead><tr>' +
+              '<th style="width:28px;"><input type="checkbox" data-check-all aria-label="' + t('bulk.select_all') + '" /></th>' +
+              '<th style="width:24px;"></th>' +
+              '<th>' + t('bandeja.col_kind', 'Tipo') + '</th>' +
+              '<th>' + t('bandeja.col_subject') + '</th>' +
+              '<th>' + t('bandeja.col_state') + '</th>' +
+              '<th>' + t('bandeja.col_risk') + '</th>' +
+              '<th>' + t('bandeja.col_sender', 'Origen') + '</th>' +
+              '<th>' + t('bandeja.col_age') + '</th>' +
+              '<th>' + t('bandeja.col_actions') + '</th>' +
+            '</tr></thead>' +
+            '<tbody>' + items.map(it => {
+              const cfg = KIND_CFG[it.kind] || KIND_CFG.draft;
+              const age = ageMin(it.createdAt);
+              const checked = state.selected.has(it.id) ? 'checked' : '';
+              const checkable = it.kind === 'draft';
+              const stateBadge = (it.kind === 'draft') ? W.draftStateBadge(it.state) : '<span class="chip" style="border-color:' + cfg.color + ';color:' + cfg.color + ';">' + (i18n.t('states.' + it.state, it.state) || '—') + '</span>';
+              const urgencyDot = it.urgency >= 3 ? '<span class="bl-urg bl-urg--3" title="Urgencia alta">●</span>' : it.urgency === 2 ? '<span class="bl-urg bl-urg--2" title="Urgencia media">●</span>' : '<span class="bl-urg bl-urg--1" title="Urgencia baja">○</span>';
+              return '<tr data-id="' + it.id + '" data-kind="' + it.kind + '" class="' + (state.selected.has(it.id) ? 'bl-row--sel' : '') + '" style="border-left:3px solid ' + cfg.color + ';">' +
+                '<td>' + (checkable ? '<input type="checkbox" data-row-check="' + it.id + '" ' + checked + ' aria-label="Seleccionar ' + it.id + '" />' : '') + '</td>' +
+                '<td>' + urgencyDot + '</td>' +
+                '<td><span class="bl-kind" style="color:' + cfg.color + ';">' + cfg.icon + ' ' + t(cfg.labelKey) + '</span></td>' +
+                '<td class="bl-subject">' + it.subject + '</td>' +
+                '<td>' + stateBadge + '</td>' +
+                '<td>' + (it.risk ? W.riskBadge(it.risk) : '<span class="muted">—</span>') + '</td>' +
+                '<td class="bl-recipient muted">' + it.sender + '</td>' +
+                '<td class="mono muted">' + age + '</td>' +
+                '<td><a class="btn btn-sm" href="' + cfg.pfx + it.id + '">' + t('common.view') + '</a></td>' +
+              '</tr>';
+            }).join('') + '</tbody>' +
+          '</table>') +
+      '</div>';
+
+    /* segment clicks */
+    root.querySelectorAll('[data-view]').forEach(b => {
+      b.addEventListener('click', () => {
+        state.view = b.getAttribute('data-view');
+        /* update URL hash query */
+        const newHash = '#/bandeja?view=' + state.view;
+        if (location.hash !== newHash) { location.hash = newHash; }
+        render();
+      });
+    });
+
+    root.querySelectorAll('[data-f]').forEach(sel => {
+      sel.value = state[sel.getAttribute('data-f')];
+      sel.addEventListener('change', e => { state[sel.getAttribute('data-f')] = e.target.value; render(); });
+    });
+
+    /* checkbox wiring (drafts only) */
+    root.querySelectorAll('[data-row-check]').forEach(cb => {
+      cb.addEventListener('change', e => {
+        const id = cb.getAttribute('data-row-check');
+        if (e.target.checked) state.selected.add(id); else state.selected.delete(id);
+        render();
+      });
+    });
+    const checkAll = root.querySelector('[data-check-all]');
+    if (checkAll) {
+      const visibleDraftIds = items.filter(i => i.kind === 'draft').map(i => i.id);
+      checkAll.checked = visibleDraftIds.length > 0 && visibleDraftIds.every(id => state.selected.has(id));
+      checkAll.addEventListener('change', e => {
+        if (e.target.checked) visibleDraftIds.forEach(id => state.selected.add(id));
+        else visibleDraftIds.forEach(id => state.selected.delete(id));
+        render();
+      });
+    }
+    const bulkApprove = root.querySelector('[data-bulk="approve"]');
+    if (bulkApprove) bulkApprove.addEventListener('click', () => handleBulkApprove());
+    const bulkClear = root.querySelector('[data-bulk="clear"]');
+    if (bulkClear) bulkClear.addEventListener('click', () => { state.selected.clear(); render(); });
+  }
+
+  /* [V2-PATCH 2026-04-19] bulk approve handler */
+  function handleBulkApprove() {
+    const ids = Array.from(state.selected);
+    if (!ids.length) return;
+    const selectedDrafts = ids.map(id => FL.mock.drafts.find(d => d.id === id)).filter(Boolean);
+    const hasIrrev = selectedDrafts.some(d => d.action && String(d.action.reversibility || '').startsWith('irreversible'));
+    const n = ids.length;
+    const msg = hasIrrev
+      ? i18n.t('bulk.confirm_bulk_irreversible', 'Drafts con acciones irreversibles. Confirmá.').replace('{n}', n)
+      : i18n.t('bulk.confirm_bulk', 'Se aprobarán drafts. ¿Continuar?').replace('{n}', n);
+    if (hasIrrev) {
+      if (!confirm('⚠ ' + msg)) return;
+      if (!confirm('Última confirmación para acciones irreversibles. Aprobar ' + n + ' drafts?')) return;
+    } else {
+      if (!confirm(msg)) return;
+    }
+    FL.bus.emit('drafts:bulk-approve', { ids });
+    FL.bus.emit('toast', { kind: 'success', message: i18n.t('bulk.done', '{n} drafts aprobados').replace('{n}', n) });
+    state.selected.clear();
+    render();
+  }
+
+  function ageMin(iso) {
+    if (!iso) return '—';
+    const diffMs = Date.now() - Date.parse(iso);
+    const min = Math.floor(diffMs / 60000);
+    if (min < 60) return min + 'm';
+    const h = Math.floor(min / 60);
+    if (h < 24) return h + 'h';
+    return Math.floor(h / 24) + 'd';
+  }
+
+  function injectStyles() {
+    if (document.getElementById('bl-styles')) return;
+    const s = document.createElement('style'); s.id = 'bl-styles';
+    s.textContent = `
+.bl-wrap { display:flex; flex-direction:column; gap:var(--space-4); max-width:1280px; }
+.bl-head h1 { margin:0 0 var(--space-1) 0; }
+.bl-filters { display:flex; gap:var(--space-4); flex-wrap:wrap; padding:var(--space-4); }
+.bl-filters label { display:flex; flex-direction:column; gap:var(--space-1); min-width:180px; }
+.bl-table { width:100%; border-collapse:collapse; background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-lg); overflow:hidden; }
+.bl-table th, .bl-table td { padding:var(--space-3); text-align:left; border-bottom:1px solid var(--stroke-default); font-size:13px; }
+.bl-table thead { background:var(--bg-subtle); }
+.bl-table th { font-size:11px; letter-spacing:0.04em; text-transform:uppercase; color:var(--text-muted); font-weight:600; }
+.bl-table tbody tr:hover { background:var(--bg-subtle); }
+.bl-subject { font-weight:500; max-width:360px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.bl-recipient { max-width:180px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+/* [V2-PATCH 2026-04-19] bulk toolbar + selected row */
+.bl-bulk { position:sticky; top:0; z-index:5; display:flex; align-items:center; gap:var(--space-2); padding:var(--space-2) var(--space-3); background:var(--accent-primary-soft); border:1px solid var(--accent-primary); border-radius:var(--radius-md); }
+.bl-bulk .t-label-sm { color:var(--accent-primary); }
+.bl-row--sel { background:var(--accent-primary-soft); }
+.bl-row--sel td { border-bottom-color:var(--accent-primary); }
+/* [V3-PATCH 2026-04-19] segments + polymorphic kind + urgency dot */
+.bl-segments { display:flex; flex-wrap:wrap; gap:var(--space-1); padding:var(--space-1); background:var(--bg-subtle); border-radius:var(--radius-md); }
+.bl-seg { display:inline-flex; align-items:center; gap:var(--space-1); padding:var(--space-1) var(--space-3); background:transparent; border:0; color:var(--text-secondary); cursor:pointer; border-radius:var(--radius-sm); font:inherit; font-size:13px; transition:background var(--dur-fast); }
+.bl-seg:hover { background:var(--bg-surface); color:var(--text-primary); }
+.bl-seg--active { background:var(--accent-primary); color:#fff; }
+.bl-seg__cnt { background:rgba(0,0,0,0.12); padding:0 6px; border-radius:var(--radius-pill); font-size:11px; font-family:var(--font-mono); }
+.bl-seg--active .bl-seg__cnt { background:rgba(255,255,255,0.22); }
+.bl-kind { display:inline-flex; align-items:center; gap:var(--space-1); font-size:11px; font-weight:600; text-transform:uppercase; letter-spacing:0.04em; }
+.bl-urg { font-size:10px; color:var(--text-muted); }
+.bl-urg--3 { color:var(--status-danger); }
+.bl-urg--2 { color:var(--status-warning); }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['bandeja-lista'] = { mount, meta: { route: '/bandeja' } };
+})();
+</script>

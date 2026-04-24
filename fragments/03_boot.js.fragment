@@ -1,0 +1,407 @@
+/* ============================================================
+   FaberLoom v1 Beta — Standalone boot
+   Bus + Store + i18n + Theme + A11y + Router + Error boundary
+   All modules self-register in window.__faberloom.modules[id].
+   Works under file:// (no fetch, no imports).
+   ============================================================ */
+
+(function () {
+  'use strict';
+
+  window.__faberloom = window.__faberloom || {};
+  const FL = window.__faberloom;
+
+  FL.modules = FL.modules || {};
+  FL.widgets = FL.widgets || {};
+  FL.mock    = FL.mock    || {};
+
+  /* ─── Event Bus ───────────────────────────────────────── */
+  const listeners = new Map();
+  FL.bus = {
+    on(event, fn) {
+      if (!listeners.has(event)) listeners.set(event, new Set());
+      listeners.get(event).add(fn);
+      return () => listeners.get(event)?.delete(fn);
+    },
+    emit(event, payload) {
+      listeners.get(event)?.forEach(fn => {
+        try { fn(payload); } catch (e) { console.error('[bus:' + event + ']', e); }
+      });
+    }
+  };
+
+  /* ─── Store (localStorage + in-memory fallback for file://) */
+  const STORE_VERSION = 'v1';
+  const memMap = new Map();
+  let storageOK = true;
+  try {
+    const testKey = '__fl_probe__';
+    localStorage.setItem(testKey, '1');
+    localStorage.removeItem(testKey);
+  } catch (e) { storageOK = false; }
+
+  FL.store = {
+    _key: (k) => 'faberloom.' + STORE_VERSION + '.' + k,
+    get(k, fallback) {
+      try {
+        if (!storageOK) {
+          return memMap.has(this._key(k)) ? memMap.get(this._key(k)) : (fallback != null ? fallback : null);
+        }
+        const raw = localStorage.getItem(this._key(k));
+        return raw == null ? (fallback != null ? fallback : null) : JSON.parse(raw);
+      } catch { return (fallback != null ? fallback : null); }
+    },
+    set(k, v) {
+      try {
+        if (!storageOK) { memMap.set(this._key(k), v); return; }
+        localStorage.setItem(this._key(k), JSON.stringify(v));
+      } catch (e) { memMap.set(this._key(k), v); }
+    },
+    remove(k) {
+      try {
+        if (!storageOK) { memMap.delete(this._key(k)); return; }
+        localStorage.removeItem(this._key(k));
+      } catch { memMap.delete(this._key(k)); }
+    }
+  };
+
+  /* ─── i18n (dicts pre-loaded by 07_i18n_*.js.fragment) ──── */
+  let currentLang = 'es';
+  FL.i18n = {
+    setLang(lang) {
+      if (!FL['i18n_' + lang]) { console.warn('i18n dict missing:', lang); return; }
+      currentLang = lang;
+      document.documentElement.lang = lang;
+      FL.store.set('lang', lang);
+      this.applyToDom();
+      FL.bus.emit('lang:change', lang);
+    },
+    current() { return currentLang; },
+    t(key, fallback) {
+      const dict = FL['i18n_' + currentLang] || FL.i18n_es || {};
+      const fb   = FL.i18n_es || {};
+      const parts = key.split('.');
+      let cur = dict, fbc = fb;
+      for (const p of parts) {
+        cur = (cur && typeof cur === 'object') ? cur[p] : undefined;
+        fbc = (fbc && typeof fbc === 'object') ? fbc[p] : undefined;
+      }
+      if (cur != null) return cur;
+      if (fbc != null) return fbc;
+      return (fallback != null ? fallback : '[??' + key + ']');
+    },
+    applyToDom(root) {
+      root = root || document;
+      root.querySelectorAll('[data-i18n]').forEach(el => {
+        const k = el.getAttribute('data-i18n');
+        const v = FL.i18n.t(k, el.textContent);
+        if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
+          if (el.placeholder !== undefined) el.placeholder = v;
+        } else {
+          el.textContent = v;
+        }
+      });
+      root.querySelectorAll('[data-i18n-attr]').forEach(el => {
+        const map = el.getAttribute('data-i18n-attr');
+        map.split(',').forEach(pair => {
+          const [a, k] = pair.split(':');
+          if (a && k) el.setAttribute(a.trim(), FL.i18n.t(k.trim()));
+        });
+      });
+    }
+  };
+
+  /* ─── Theme ──────────────────────────────────────────── */
+  FL.theme = {
+    apply(t) {
+      document.documentElement.setAttribute('data-theme', t);
+      FL.store.set('theme', t);
+      FL.bus.emit('theme:change', t);
+    },
+    current() { return document.documentElement.getAttribute('data-theme') || 'light'; },
+    toggle() { this.apply(this.current() === 'light' ? 'dark' : 'light'); }
+  };
+
+  /* ─── A11y ──────────────────────────────────────────── */
+  let liveRegion;
+  FL.a11y = {
+    announce(msg, priority) {
+      priority = priority || 'polite';
+      if (!liveRegion) {
+        liveRegion = document.getElementById('fl-live') || (() => {
+          const d = document.createElement('div');
+          d.id = 'fl-live';
+          d.className = 'live-region';
+          d.setAttribute('aria-live', priority);
+          d.setAttribute('aria-atomic', 'true');
+          document.body.appendChild(d);
+          return d;
+        })();
+      }
+      liveRegion.textContent = '';
+      setTimeout(() => { liveRegion.textContent = msg; }, 50);
+    },
+    trapFocus(container) {
+      const selector = 'button,a[href],input,select,textarea,[tabindex]:not([tabindex="-1"])';
+      const focusable = () => Array.from(container.querySelectorAll(selector)).filter(el => !el.disabled && el.offsetParent !== null);
+      const handler = (e) => {
+        if (e.key !== 'Tab') return;
+        const items = focusable();
+        if (!items.length) return;
+        const first = items[0], last = items[items.length - 1];
+        if (e.shiftKey && document.activeElement === first) { e.preventDefault(); last.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first.focus(); }
+      };
+      container.addEventListener('keydown', handler);
+      setTimeout(() => { const f = focusable(); if (f[0]) f[0].focus(); }, 50);
+      return () => container.removeEventListener('keydown', handler);
+    }
+  };
+
+  /* ─── Error-boundary DegradedCard renderer ─────────── */
+  function renderDegradedCard(pattern, err) {
+    const t = FL.i18n.t.bind(FL.i18n);
+    const errStr = err ? String(err.stack || err.message || err).slice(0, 400) : '';
+    return (
+      '<section class="card" role="alert" data-widget="degraded-card" ' +
+      'style="border-left: 3px solid var(--status-warning); max-width: 560px; margin: var(--space-12) auto;">' +
+      '<div style="display:flex; gap: var(--space-3); align-items: flex-start;">' +
+      '<div style="font-size: 24px;" aria-hidden="true">⚠</div>' +
+      '<div style="flex:1;">' +
+      '<h2 class="t-heading-md" style="margin: 0 0 var(--space-2) 0;">' + t('error.module.title', 'Este módulo no está disponible') + '</h2>' +
+      '<p class="t-body-sm" style="margin: 0 0 var(--space-3) 0;">' + t('error.module.subtitle', 'El resto del sistema sigue operando. Podés reintentar.') + '</p>' +
+      (errStr ? '<pre class="t-mono" style="background:var(--bg-sunken); padding: var(--space-2) var(--space-3); border-radius: var(--radius-sm); margin: 0 0 var(--space-3) 0; overflow:auto; max-height: 120px; font-size: 11px;">' + errStr.replace(/</g, '&lt;') + '</pre>' : '') +
+      '<div style="display: flex; gap: var(--space-2); align-items:center;">' +
+      '<button class="btn btn-primary btn-sm" data-retry="' + pattern + '">' + t('error.module.retry', 'Reintentar') + '</button>' +
+      '<code>' + pattern + '</code>' +
+      '</div></div></div></section>'
+    );
+  }
+
+  /* ─── Router (hash + module registry + error boundary) */
+  const routes = new Map();    // pattern -> { moduleId, meta }
+  let currentMod = null;
+  let currentSlot = null;
+  const FAILED = new Set();
+
+  FL.router = {
+    register(pattern, moduleId, meta) {
+      routes.set(pattern, { moduleId, meta: meta || {} });
+    },
+    resolve(hash) {
+      const raw = (hash || '#/').replace(/^#/, '') || '/';
+      /* [V2-PATCH 2026-04-19] split path and query so #/chat/new?agent=X works */
+      const qIx = raw.indexOf('?');
+      const path  = qIx >= 0 ? raw.slice(0, qIx) : raw;
+      const qStr  = qIx >= 0 ? raw.slice(qIx + 1) : '';
+      const query = {};
+      if (qStr) qStr.split('&').forEach(kv => {
+        const [k, v] = kv.split('=');
+        if (k) query[decodeURIComponent(k)] = v == null ? '' : decodeURIComponent(v);
+      });
+      if (routes.has(path)) return { pattern: path, params: {}, query };
+      for (const [pat] of routes) {
+        const re = new RegExp('^' + pat.replace(/:[^/]+/g, '([^/]+)') + '$');
+        const m = path.match(re);
+        if (m) {
+          const keys = (pat.match(/:[^/]+/g) || []).map(k => k.slice(1));
+          const params = Object.fromEntries(keys.map((k, i) => [k, m[i + 1]]));
+          return { pattern: pat, params, query };
+        }
+      }
+      return null;
+    },
+    navigate(hash) {
+      const slot = currentSlot;
+      if (!slot) return;
+      if (location.hash !== hash && hash) { location.hash = hash; return; }
+      const match = this.resolve(hash);
+      if (!match) {
+        slot.innerHTML = '<div class="card" style="max-width:560px; margin:var(--space-12) auto;"><h2 class="t-display-sm">404</h2><p class="t-body-md muted">' + (hash || '#/') + '</p></div>';
+        return;
+      }
+      const route = routes.get(match.pattern);
+      const mod   = FL.modules[route.moduleId];
+      if (FAILED.has(match.pattern) || !mod || typeof mod.mount !== 'function') {
+        slot.innerHTML = renderDegradedCard(match.pattern, !mod ? new Error('Module not registered: ' + route.moduleId) : null);
+        wireRetry(slot);
+        return;
+      }
+      if (currentMod && typeof currentMod.unmount === 'function') {
+        try { currentMod.unmount(); } catch (e) { console.warn('unmount failed', e); }
+      }
+      slot.innerHTML = '<div class="card" aria-busy="true" style="max-width:480px;margin:var(--space-8) auto;"><div class="t-body-sm muted">' + FL.i18n.t('common.loading', 'Cargando…') + '</div></div>';
+      try {
+        const ctx = {
+          bus: FL.bus, store: FL.store, i18n: FL.i18n, a11y: FL.a11y, theme: FL.theme,
+          params: match.params,
+          query:  match.query || {},   /* [V2-PATCH 2026-04-19] */
+          slot, mock: FL.mock, widgets: FL.widgets,
+          navigate: h => FL.router.navigate(h)
+        };
+        slot.innerHTML = '';
+        const res = mod.mount(slot, ctx);
+        currentMod = res || null;
+        FL.i18n.applyToDom(slot);
+        FL.a11y.announce(FL.i18n.t('nav.' + route.moduleId, route.moduleId));
+        slot.focus({ preventScroll: true });
+        FL.bus.emit('route:mounted', { pattern: match.pattern, params: match.params, moduleId: route.moduleId });
+      } catch (e) {
+        console.error('[route ' + match.pattern + '] mount failed', e);
+        FAILED.add(match.pattern);
+        slot.innerHTML = renderDegradedCard(match.pattern, e);
+        wireRetry(slot);
+        FL.bus.emit('route:failed', { pattern: match.pattern, error: e });
+      }
+    },
+    init(slot) {
+      currentSlot = slot;
+      window.addEventListener('hashchange', () => FL.router.navigate(location.hash));
+      /* [V2-PATCH 2026-04-19] default hash → chat (primera impresión conversacional) */
+      FL.router.navigate(location.hash || '#/chat');
+    },
+    retry(pattern) {
+      FAILED.delete(pattern);
+      FL.router.navigate(location.hash);
+    }
+  };
+
+  function wireRetry(root) {
+    root.querySelectorAll('[data-retry]').forEach(b => {
+      b.addEventListener('click', () => FL.router.retry(b.getAttribute('data-retry')));
+    });
+  }
+
+  /* ─── Role / tenant state (UI-only simulation) ───────── */
+  FL.session = {
+    tenantId: 't_muito',
+    userId:   'u_alvaro',
+    role:     'owner',       // owner | admin | operator
+    breakGlass: false,
+    breakGlassUntil: null,
+    setRole(r) {
+      this.role = r;
+      FL.store.set('role', r);
+      FL.bus.emit('role:change', r);
+    },
+    setTenant(t) {
+      this.tenantId = t;
+      FL.store.set('tenant', t);
+      FL.bus.emit('tenant:change', t);
+    },
+    activateBreakGlass(hours) {
+      hours = hours || 8;
+      this.breakGlass = true;
+      this.breakGlassUntil = Date.now() + hours * 3600 * 1000;
+      FL.store.set('break_glass_until', this.breakGlassUntil);
+      FL.bus.emit('break-glass:change', true);
+      FL.bus.emit('toast', { kind: 'warn', message: FL.i18n.t('admin.break_glass_active', 'Break-glass activo ' + hours + 'h') });
+    },
+    isBreakGlassActive() {
+      if (!this.breakGlass) return false;
+      if (Date.now() >= this.breakGlassUntil) { this.breakGlass = false; return false; }
+      return true;
+    }
+  };
+
+  /* ─── Boot.init (fired by build.py-injected tail) ───── */
+  FL.boot = {
+    init() {
+      // theme
+      const savedTheme = FL.store.get('theme', matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+      FL.theme.apply(savedTheme);
+
+      // lang
+      const savedLang = FL.store.get('lang', 'es');
+      currentLang = FL['i18n_' + savedLang] ? savedLang : 'es';
+      document.documentElement.lang = currentLang;
+      FL.i18n.applyToDom();
+
+      // session
+      const savedRole   = FL.store.get('role', 'owner');
+      const savedTenant = FL.store.get('tenant', 't_muito');
+      FL.session.role     = savedRole;
+      FL.session.tenantId = savedTenant;
+
+      // widget CSS injection (done by 06_widgets fragment)
+      if (FL.widgets && typeof FL.widgets.injectStyles === 'function') {
+        FL.widgets.injectStyles();
+      }
+
+      // register module routes from known module IDs
+      const moduleRoutes = [
+        /* [V2-PATCH 2026-04-19] chat routes + new default */
+        ['/',                    'chat'],
+        ['/chat',                'chat'],
+        ['/chat/:id',            'chat'],
+        ['/bandeja',             'bandeja-lista'],
+        ['/bandeja/:id',         'bandeja-detail'],
+        /* [V3.5-PATCH 2026-04-19] /agentes → list (was console redirect) */
+        ['/agentes',             'agent-list'],
+        ['/agentes/:id',         'agent-console'],
+        ['/workflows',           'workflows-canvas'],
+        ['/runs',                'runs-timeline'],
+        ['/skills',              'skill-studio'],
+        ['/skills/:id',          'skill-studio'],
+        ['/consolidaciones',     'consolidation'],
+        ['/design',              'design-system'],
+        ['/admin/usuarios',      'admin-users'],
+        ['/admin/conocimiento',  'admin-knowledge'],
+        ['/admin/auditoria',     'admin-audit'],
+        ['/admin/tenant',        'admin-tenant'],
+        ['/admin/conectores',    'admin-connectors'],
+        /* [V4-PATCH 2026-04-22] admin LLM orchestration + infra */
+        ['/admin/llm-orchestration',            'admin-llm-infra'],
+        ['/admin/llm-orchestration/:tab',       'admin-llm-infra'],
+        ['/ops/health',          'ops-health']
+      ];
+      moduleRoutes.forEach(([pat, id]) => FL.router.register(pat, id));
+
+      // mount shell
+      const slot = document.getElementById('fl-slot');
+      if (!slot) { console.error('fl-slot missing — shell fragment probably not loaded'); return; }
+
+      FL.router.init(slot);
+
+      // global keyboard
+      window.addEventListener('keydown', (e) => {
+        const mod = e.metaKey || e.ctrlKey;
+        if (mod && e.key === 'k') {
+          e.preventDefault();
+          FL.bus.emit('toast', { kind: 'info', message: FL.i18n.t('common.launcher_pending', 'Launcher pendiente · ⌘K') });
+        }
+        /* [V2-PATCH 2026-04-19] chat keybindings */
+        if (mod && e.key === 'e' && !e.shiftKey) {
+          e.preventDefault();
+          FL.bus.emit('chat:iterate-last');   // chat module listens
+        }
+        if (mod && e.key === 'a' && !e.shiftKey && !isTypingTarget(e.target)) {
+          e.preventDefault();
+          location.hash = '#/agentes/ag_cotizador';
+        }
+        if (mod && e.key === 'b' && !e.shiftKey && !isTypingTarget(e.target)) {
+          e.preventDefault();
+          location.hash = '#/bandeja';
+        }
+        if (mod && e.key === '/') {
+          e.preventDefault();
+          FL.bus.emit('chat:toggle-skill-search');
+        }
+        if (e.key === 'Escape') FL.bus.emit('overlay:close');
+      });
+
+      function isTypingTarget(el) {
+        if (!el) return false;
+        const t = (el.tagName || '').toLowerCase();
+        return t === 'input' || t === 'textarea' || t === 'select' || el.isContentEditable;
+      }
+
+      // toast channel
+      FL.bus.on('toast', (data) => {
+        if (FL.widgets && typeof FL.widgets.toast === 'function') FL.widgets.toast(data);
+      });
+    }
+  };
+
+  FL.renderDegradedCard = renderDegradedCard;
+})();

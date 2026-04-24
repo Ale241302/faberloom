@@ -1,0 +1,157 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null;
+
+  function mount(slot) {
+    root = slot; injectStyles();
+    if (FL.session.role !== 'owner') {
+      root.innerHTML = W.degradedCard('admin-tenant', new Error('Solo el Tenant Owner puede editar.'));
+      return { unmount: () => { if (root) root.innerHTML = ''; } };
+    }
+    const tenant = FL.mock.tenants.find(t => t.id === FL.session.tenantId) || FL.mock.tenants[0];
+    render(tenant);
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  /* [V3-PATCH 2026-04-19] editable sections + audit on save */
+  let edits = {};
+  function render(tenant) {
+    const t = k => i18n.t(k);
+    edits = edits || {};
+    root.innerHTML =
+      '<div class="at-wrap">' +
+      '<header><h1 class="t-display-md">' + t('admin.tenant_title') + ' · ' + tenant.name + '</h1>' +
+      '<p class="muted">plan <code>' + tenant.plan + '</code> · region <code>' + tenant.region + '</code> · ' + tenant.seatsActive30d + ' seats activos 30d</p></header>' +
+      '<div class="at-grid">' +
+        secEditable('identity', t('admin.tenant_identity'),
+          '<label><span class="t-label-sm">Identity mode</span><select class="select" data-fld="identity_mode"><option value="local">Local</option><option value="oidc" selected>OIDC (Entra ID)</option><option value="directory">Directory read-only</option></select></label>' +
+          '<label><span class="t-label-sm">SSO endpoint</span><input class="input" data-fld="sso_endpoint" value="https://login.microsoftonline.com/{tenantId}/v2.0"/></label>'
+        ) +
+        secEditable('retention', t('admin.tenant_retention'),
+          '<label><span class="t-label-sm">audit_event INFO retention (días)</span><input class="input" type="number" data-fld="audit_info_days" value="730"/></label>' +
+          '<label><span class="t-label-sm">memory_chunk superseded retention</span><select class="select" data-fld="memory_retention"><option value="indefinite" selected>Indefinite</option><option value="365">365 días</option><option value="730">730 días</option></select></label>'
+        ) +
+        secEditable('branding', t('admin.tenant_branding'),
+          '<label><span class="t-label-sm">Brand coral</span><input class="input" data-fld="brand_coral" value="#C96442"/></label>' +
+          '<label><span class="t-label-sm">Brand cream</span><input class="input" data-fld="brand_cream" value="#F4F1ED"/></label>' +
+          '<label><span class="t-label-sm">Logo URL</span><input class="input" data-fld="logo_url" placeholder="https://..."/></label>'
+        ) +
+        secEditable('flags', t('admin.tenant_flags'),
+          '<label class="at-flag"><input type="checkbox" data-fld="ff_consolidation_eval" checked/> consolidation_eval (cron diario)</label>' +
+          '<label class="at-flag"><input type="checkbox" data-fld="ff_leakage_tests" checked/> leakage_tests (CI gate)</label>' +
+          '<label class="at-flag"><input type="checkbox" data-fld="ff_jaeger"/> Jaeger tracing (off por default v1)</label>' +
+          '<label class="at-flag"><input type="checkbox" data-fld="ff_s3_archive"/> S3 archive (planificado v1.5)</label>'
+        ) +
+        secEditable('smtp', t('admin.tenant_smtp'),
+          '<label><span class="t-label-sm">Provider</span><select class="select" data-fld="smtp_provider"><option value="postmark" selected>Postmark</option><option value="ses">AWS SES</option><option value="smtp">Custom SMTP</option></select></label>' +
+          '<label><span class="t-label-sm">From address</span><input class="input" data-fld="smtp_from" value="hola@muito.work"/></label>' +
+          '<button class="btn btn-sm" data-test-smtp>Probar conexión</button>'
+        ) +
+        secEditable('backup', t('admin.tenant_backup'),
+          '<label><span class="t-label-sm">RPO (horas)</span><input class="input" type="number" data-fld="rpo_hours" value="24"/></label>' +
+          '<label><span class="t-label-sm">RTO (horas)</span><input class="input" type="number" data-fld="rto_hours" value="2"/></label>' +
+          '<label><span class="t-label-sm">Retention (días)</span><input class="input" type="number" data-fld="backup_retention_days" value="30"/></label>' +
+          '<button class="btn btn-sm" data-act="manual-backup">▶ Trigger backup manual</button>'
+        ) +
+      '</div>' +
+      '<section class="at-beta card">' +
+      '<h2 class="t-heading-md">Plan · Beta slice</h2>' +
+      '<p class="t-body-md">Wedge Beta: <strong>2026-04-20 → 2026-06-14</strong> (3 design partners LATAM B2B calzado seguridad)</p>' +
+      '<p class="t-body-sm muted">SPEC DRAFT v1.0 · APPROVED tras validación design partners · S4 (2026-06-14) hard cut.</p>' +
+      '</section>' +
+      /* [V3-PATCH 2026-04-19] Tenant Export · LGPD compliance + migration */
+      '<section class="at-export card">' +
+        '<h2 class="t-heading-md">📦 Tenant export · compliance + portabilidad</h2>' +
+        '<p class="t-body-sm">Export completo del tenant para compliance LGPD/LFPDPPP, migración, o backup audit. Incluye: 17 colecciones + audit log completo + memory chunks (excluyendo user-private de otros users si no break-glass activo).</p>' +
+        '<div class="row" style="gap:var(--space-2);">' +
+          '<button class="btn btn-primary" data-act="tenant-export-now">📦 Generar export ahora</button>' +
+          '<button class="btn" data-act="tenant-export-schedule">⏰ Programar mensual</button>' +
+        '</div>' +
+        '<div class="t-body-sm muted" style="margin-top:var(--space-2);">Último export: 2026-03-31 04:00 · 14.2 MB · S3 muito-backups/tenant_export_2026-03.zip</div>' +
+      '</section>' +
+      '</div>';
+
+    /* wire save buttons */
+    root.querySelectorAll('[data-save-section]').forEach(b => {
+      b.addEventListener('click', () => {
+        const section = b.getAttribute('data-save-section');
+        FL.mock.auditEvents.unshift({
+          id:'ae_' + Date.now(), ts:new Date().toISOString(), tenantId:FL.session.tenantId,
+          actor:FL.session.userId, action:'tenant.config_changed', target:'section:' + section,
+          severity:'INFO', ip:'10.0.0.1', userAgent:'FaberLoom/1.0'
+        });
+        FL.bus.emit('toast', { kind:'success', message:'Sección "' + section + '" guardada · audit_event registrado' });
+      });
+    });
+    const tb = root.querySelector('[data-test-smtp]');
+    if (tb) tb.addEventListener('click', () => {
+      tb.disabled = true; tb.textContent = '⏳ Testing…';
+      setTimeout(() => { tb.disabled = false; tb.textContent = 'Probar conexión'; FL.bus.emit('toast', { kind:'success', message:'✓ SMTP OK · 240ms' }); }, 800);
+    });
+    const mb = root.querySelector('[data-act="manual-backup"]');
+    if (mb) mb.addEventListener('click', () => {
+      mb.disabled = true; mb.textContent = '⏳ Backing up…';
+      setTimeout(() => {
+        mb.disabled = false; mb.textContent = '▶ Trigger backup manual';
+        FL.mock.auditEvents.unshift({ id:'ae_' + Date.now(), ts:new Date().toISOString(), tenantId:FL.session.tenantId, actor:FL.session.userId, action:'backup.triggered_manual', target:'tenant:' + FL.session.tenantId, severity:'INFO', ip:'10.0.0.1', userAgent:'FaberLoom/1.0' });
+        FL.bus.emit('toast', { kind:'success', message:'✓ Backup manual completado · 287s · audit_event registrado' });
+      }, 1400);
+    });
+    /* [V3-PATCH 2026-04-19] tenant export */
+    const te = root.querySelector('[data-act="tenant-export-now"]');
+    if (te) te.addEventListener('click', () => {
+      const payload = {
+        exportedAt: new Date().toISOString(), tenantId: FL.session.tenantId, exportedBy: FL.session.userId,
+        regulation_basis: ['LGPD','LFPDPPP','Ley 1581','Ley 29733'],
+        collections: { tenants:1, users:7, departments:3, businessEntities:4, agents:7, drafts:14, conversations:8, messages:45, consolidations:5, feedbacks:8, auditEvents:64, actions:18, connectors:5, policies:12, jobs:10, alerts:3, tables:20 },
+        memory_chunks_summary:{ global:2, org:4, dept:2, user_private:'(filtered per role)' }
+      };
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type:'application/json' });
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = 'tenant_export_' + FL.session.tenantId + '_' + new Date().toISOString().slice(0, 10) + '.json'; a.click();
+      FL.mock.auditEvents.unshift({ id:'ae_' + Date.now(), ts:new Date().toISOString(), tenantId:FL.session.tenantId, actor:FL.session.userId, action:'tenant.exported', target:'tenant:' + FL.session.tenantId, severity:'INFO', ip:'10.0.0.1', userAgent:'FaberLoom/1.0' });
+      FL.bus.emit('toast', { kind:'success', message:'✓ Tenant export generado · audit_event tenant.exported registrado' });
+    });
+    const tsch = root.querySelector('[data-act="tenant-export-schedule"]');
+    if (tsch) tsch.addEventListener('click', () => FL.bus.emit('toast', { kind:'info', message:'Cron mensual programado · próximo: 2026-05-01 04:00 · destino S3' }));
+  }
+
+  function secEditable(key, title, fieldsHtml) {
+    return '<section class="at-sec at-sec--editable card"><h3 class="t-heading-md">' + title + '</h3>' +
+      '<div class="at-fields">' + fieldsHtml + '</div>' +
+      '<div class="at-sec__footer"><button class="btn btn-sm btn-primary" data-save-section="' + key + '">' + i18n.t('common.save') + '</button></div>' +
+      '</section>';
+  }
+
+  /* legacy sec() retained for back-compat (unused in v3) */
+  function sec(title, html) {
+    return '<section class="at-sec card"><h3 class="t-heading-md">' + title + '</h3><div class="t-body-sm">' + html + '</div></section>';
+  }
+
+  function injectStyles() {
+    if (document.getElementById('at-styles')) return;
+    const s = document.createElement('style'); s.id = 'at-styles';
+    s.textContent = `
+.at-wrap { display:flex; flex-direction:column; gap:var(--space-4); max-width:1200px; }
+.at-wrap h1 { margin:0 0 var(--space-1); }
+.at-grid { display:grid; grid-template-columns:1fr 1fr; gap:var(--space-3); }
+@media (max-width: 760px) { .at-grid { grid-template-columns:1fr; } }
+.at-sec { padding:var(--space-4); }
+.at-sec h3 { margin:0 0 var(--space-2); color:var(--text-primary); }
+.at-beta { padding:var(--space-5); border-left:3px solid var(--accent-primary); }
+/* [V3-PATCH] editable tenant sections */
+.at-sec--editable .at-fields { display:flex; flex-direction:column; gap:var(--space-2); margin-bottom:var(--space-3); }
+.at-sec--editable label { display:flex; flex-direction:column; gap:var(--space-1); }
+.at-sec--editable .at-flag { flex-direction:row; align-items:center; gap:var(--space-2); }
+.at-sec__footer { display:flex; justify-content:flex-end; gap:var(--space-2); padding-top:var(--space-2); border-top:1px solid var(--stroke-default); }
+.at-export { padding:var(--space-5); border-left:3px solid var(--brand-coral); display:flex; flex-direction:column; gap:var(--space-2); }
+.at-export h2 { margin:0; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['admin-tenant'] = { mount, meta: { route: '/admin/tenant' } };
+})();
+</script>

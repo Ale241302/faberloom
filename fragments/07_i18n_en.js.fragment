@@ -1,0 +1,284 @@
+/* FaberLoom v1 Beta — i18n EN */
+window.__faberloom = window.__faberloom || {};
+window.__faberloom.i18n_en = {
+  common: {
+    approve: 'Approve', reject: 'Reject', edit: 'Edit', feedback: 'Feedback',
+    loading: 'Loading…', empty: 'No items', error: 'Something went wrong',
+    retry: 'Retry', cancel: 'Cancel', save: 'Save', close: 'Close',
+    search: 'Search…', filters: 'Filters', clear: 'Clear', export: 'Export',
+    view: 'View', create: 'Create', delete: 'Delete', confirm: 'Confirm',
+    yes: 'Yes', no: 'No', ok: 'OK', copy: 'Copy',
+    details: 'Details', more: 'Show more', less: 'Show less',
+    launcher_pending: 'Launcher pending · ⌘K',
+    submitted: 'Submitted', not_available: 'Not available',
+    scope: 'Scope', version: 'Version', status: 'Status'
+  },
+  a11y: {
+    skip_to_main: 'Skip to content',
+    breadcrumb: 'Breadcrumb',
+    main: 'Main content',
+    close_dialog: 'Close dialog'
+  },
+  topbar: {
+    search: 'Search…',
+    validate: 'Validate',
+    tenant: 'Tenant', role: 'Role', language: 'Language',
+    theme_light: 'Light mode', theme_dark: 'Dark mode', theme_toggle: 'Toggle theme',
+    view_state: 'View state', user_menu: 'User menu'
+  },
+  nav: {
+    group_main: 'Main', group_build: 'Build', group_admin: 'Admin',
+    chat: 'Chat', 'chat': 'Chat',
+    bandeja: 'Inbox', 'bandeja-lista': 'Inbox', 'bandeja-detail': 'Inbox · Detail',
+    agentes: 'Agents', 'agent-console': 'Agent Console',
+    workflows: 'Workflows', 'workflows-canvas': 'Workflows',
+    runs: 'Runs', 'runs-timeline': 'Runs',
+    skills: 'Skill Studio', 'skill-studio': 'Skill Studio',
+    consolidaciones: 'Consolidations', consolidation: 'Consolidations',
+    design: 'Design System', 'design-system': 'Design System',
+    admin_users: 'Users', 'admin-users': 'Users',
+    admin_knowledge: 'Knowledge', 'admin-knowledge': 'Knowledge',
+    admin_audit: 'Audit', 'admin-audit': 'Audit',
+    admin_tenant: 'Tenant', 'admin-tenant': 'Tenant',
+    admin_connectors: 'Connectors', 'admin-connectors': 'Connectors',
+    /* [V4-PATCH 2026-04-22] */
+    admin_llm_infra: 'LLM · Infra', 'admin-llm-infra': 'LLM · Infra',
+    ops_health: 'Ops Health', 'ops-health': 'Ops Health'
+  },
+  bandeja: {
+    title: 'Outbox', subtitle: 'Drafts awaiting review + recent archive',
+    col_agent: 'Agent', col_subject: 'Subject', col_state: 'State',
+    col_risk: 'Risk', col_age: 'Age', col_actions: 'Actions', col_recipient: 'Recipient',
+    bulk_approve: 'Approve selected',
+    filter_state: 'Filter by state', filter_agent: 'Filter by agent', filter_entity: 'Filter by account',
+    empty: 'No pending drafts', empty_filtered: 'No drafts match filters',
+    tab_content: 'Content', tab_evidence: 'Evidence', tab_risk: 'Risk', tab_trace: 'Trace',
+    confirm_approve: 'Confirm approval?',
+    confirm_approve_irreversible: 'Irreversible action. Confirm?',
+    approve_done: 'Draft approved', reject_done: 'Draft rejected',
+    edit_draft: 'Edit draft', fingerprint: 'Model fingerprint',
+    recipient: 'Recipient', subject: 'Subject',
+    detail: { risk: { class: 'Risk class', levels: { none: 'None', low: 'Low', medium: 'Medium', high: 'High', critical: 'Critical' } } },
+    /* [V3-PATCH] polymorphic */
+    subtitle_v3: 'Unified workspace · 12 item types + saved views',
+    col_kind: 'Type',
+    col_sender: 'Origin',
+    kind: { draft:'Draft', inbound_email:'Inbound email', inbound_msg:'Message', crm_event:'CRM', alert:'Alert', approval_request:'Approval', escalation:'Escalation', feedback_reply:'Feedback', sla_timer:'SLA', webhook:'Webhook', audit_alert:'Audit', task:'Task' },
+    view: { attention:'Attention', triage:'Triage', approve:'Approve', mine:'Mine', team:'Team' }
+  },
+  skill: {
+    title: 'Skill Studio',
+    col_base: 'Sealed base', col_manual: 'Manual overlay', col_learned: 'Learned overlay',
+    base_sealed: 'Sealed base · read-only',
+    add_rule: 'Add rule', consolidate: 'Consolidate',
+    thermo_cold: 'Cold', thermo_warm: 'Warm', thermo_hot: 'Hot',
+    ttl_label: 'Learned overlay TTL (days)',
+    gold_samples: 'Gold samples',
+    learned: { cold: 'Cold', warm: 'Warm', hot: 'Hot' },
+    pending_consolidation: 'Pending consolidation',
+    version: 'Version', author: 'Author',
+    rule_placeholder: 'Describe the rule in one line',
+    pattern_evidence: 'Evidence',
+    manual_empty: 'No manual rules yet', learned_empty: 'No patterns detected'
+  },
+  agents: { create_btn:'Create agent', edit_btn:'Edit AgentSpec', clone_btn:'Clone', pause_btn:'Pause', resume_btn:'Resume', retire_btn:'Retire', rollback_btn:'Rollback' },
+  agent: {
+    title: 'Agent Console',
+    tab_versioning: 'Versioning',
+    kpi_runs: 'Runs 30d', kpi_approval: 'Approval', kpi_latency: 'Latency p50',
+    kpi_fail: 'Fail rate', kpi_cost: 'Cost USD 30d',
+    tab_summary: 'Summary', tab_skills: 'Skills', tab_memory: 'Memory', tab_logs: 'Logs',
+    unlock_criterion: 'Criterion to level up', unlock_approver: 'Approves · Tenant Owner',
+    memory: { run_session: 'Run / session', org_account: 'Org / account', curated: 'Curated (Gold)' },
+    last_runs: 'Recent runs', trigger_word: 'Trigger'
+  },
+  autonomy: {
+    label: 'Autonomy level',
+    l0: { name: 'Shadow',            help: 'Observes, no user-facing output.' },
+    l1: { name: 'Proposes',          help: 'Drafts always, approval required.' },
+    l2: { name: 'Auto-low',          help: 'Internal actions without approval.' },
+    l3: { name: 'Auto+notify',       help: 'Executes and notifies after the fact.' },
+    l4: { name: 'Auto+exceptions',   help: 'Auto on narrow flows; only exceptions to human.' }
+  },
+  states: {
+    drafting: 'Drafting', awaiting_approval: 'Awaiting approval', approved: 'Approved',
+    executing: 'Executing', waiting_external_signal: 'Waiting external signal', blocked: 'Blocked',
+    completed: 'Completed', failed: 'Failed', escalated: 'Escalated', rejected: 'Rejected',
+    untriaged: 'Untriaged', assigned: 'Assigned', pending: 'Pending', pending_my_approval: 'Awaiting my approval', acknowledged: 'Ack', running: 'Running'
+  },
+  risk: {
+    reversibility: 'Reversibility', side_effects: 'Side effects',
+    min_autonomy: 'Min autonomy', required_role: 'Required role', audit_class: 'Audit class',
+    reversible_24h: 'Reversible ≤24h', reversible_cost: 'Reversible with cost',
+    irreversible: 'Irreversible', irreversible_cost: 'Irreversible with cost'
+  },
+  workflow: {
+    title: 'Workflows', palette: 'Palette', inspector: 'Inspector',
+    node_trigger: 'Trigger', node_retrieve: 'Retrieve', node_llm: 'LLM',
+    node_validator: 'Validator', node_hitl: 'HITL', node_action: 'Action', node_branch: 'Branch',
+    execute: 'Execute', select_node: 'Select a node'
+  },
+  feedback: {
+    title: 'Send feedback',
+    subtitle: 'Your feedback feeds the gold samples of this agent',
+    reason_no_evidence: 'Claim without evidence', reason_tone: 'Wrong tone',
+    reason_wrong_data: 'Incorrect data', reason_risky: 'Risky action', reason_other: 'Other',
+    note: 'Notes (optional)', submit: 'Send feedback', cancel: 'Cancel',
+    submitted: 'Feedback sent',
+    reasons: {
+      claim: { title: 'Claim without evidence', help: 'Agent asserts something without citing a source.' },
+      tone:  { title: 'Wrong tone',    help: 'Style does not match brand / context.' },
+      data:  { title: 'Incorrect data', help: 'Wrong number, date, or entity.' },
+      risk:  { title: 'Risky action',    help: 'Proposed action has unassessed risk.' },
+      other: { title: 'Other',           help: 'Any other remark.' }
+    }
+  },
+  consolidation: {
+    title: 'Consolidation',
+    col_candidate: 'Candidate', col_active: 'Active', col_archived: 'Archived', col_reverted: 'Reverted',
+    approve: 'Approve', reject: 'Reject', rollback: 'Revert',
+    diff_before: 'Before', diff_after: 'After',
+    accumulated: 'accumulated patterns since',
+    suggested_rule: 'Suggested rule',
+    sections: { learned: 'Learned', applies: 'Applies to', impact: 'Impact', confirm: 'Confirm' },
+    crossSkill: 'Cross-skill', before: 'Before', after: 'After',
+    confirm: 'Approve consolidation', discard: 'Discard', submitted: 'Consolidation approved'
+  },
+  admin: {
+    users_title: 'Users', users_invite: 'Invite user',
+    users_col_name: 'Name', users_col_email: 'Email', users_col_role: 'Role',
+    users_col_dept: 'Department', users_col_last: 'Last active',
+    knowledge_title: 'Knowledge flow', knowledge_promote: 'Promote',
+    knowledge_scope_global: 'Global', knowledge_scope_org: 'Organization',
+    knowledge_scope_dept: 'Department', knowledge_scope_user: 'User',
+    audit_title: 'Audit', audit_export: 'Export CSV',
+    audit_col_ts: 'Timestamp', audit_col_actor: 'Actor', audit_col_action: 'Action',
+    audit_col_target: 'Target', audit_col_sev: 'Severity',
+    tenant_title: 'Tenant', tenant_identity: 'SSO identity',
+    tenant_retention: 'Retention', tenant_branding: 'Branding',
+    tenant_flags: 'Feature flags', tenant_smtp: 'SMTP (Postmark)',
+    tenant_backup: 'Backup · RPO 24h · RTO 2h',
+    connectors_title: 'Connectors',
+    connector_connected: 'Connected', connector_disconnected: 'Disconnected', connector_planned: 'Planned',
+    break_glass: 'Activate break-glass',
+    break_glass_warn: 'Privileged admin access. Max 8h. MFA required.',
+    break_glass_active: 'Break-glass active',
+    private_by_default: 'Private-by-default'
+  },
+  ops: {
+    health_title: 'Ops Health',
+    containers: 'Containers', containers_dev: 'Dev (4)', containers_staging: 'Staging (11)',
+    slos: 'SLOs', slos_p95: 'p95 retrieval', slos_avail: 'Availability', slos_error: 'Error rate',
+    jobs: 'Jobs', alerts: 'Alerts',
+    tables: 'FROZEN tables', tables_sprint: 'Sprint', tables_rows: 'Rows', tables_size: 'Size (KB)',
+    rls_debug: 'RLS session variables (debug)'
+  },
+  error: {
+    boundary: { title: 'Something broke', subtitle: 'Report the issue and reload.' },
+    module:   { title: 'This module is unavailable', subtitle: 'The rest of the system keeps running. You can retry.', retry: 'Retry' }
+  },
+
+  /* ═════ [V2-PATCH 2026-04-19] · Chat + pattern + voc + message_actions + iteration ═════ */
+  chat: {
+    empty_title: 'What do you want to solve?',
+    empty_subtitle: 'Pick an agent, a skill, or try one of the suggestions.',
+    composer_placeholder_1: 'Type your message…',
+    composer_placeholder_2: 'Ask for a quote, consolidate, or something else…',
+    composer_placeholder_3: 'Example: Quote 500 Marluvas Goliath XT MX',
+    send: 'Send',
+    attach: 'Attach',
+    active_skills: 'Active skills',
+    handoff_to: 'Handoff to',
+    talking_to: 'Talking with',
+    iterate_this_draft: 'Iterate on this draft',
+    iterate_hint: 'Refine the draft without losing context.',
+    iterate_go: 'Iterate',
+    iterate_n: 'Iteration',
+    grounded_in_title: 'Grounded in',
+    grounded_in_empty: 'No sources yet.',
+    sla_p95_label: 'SLA p95',
+    sla_p95_breach_warn: 'Close to threshold — monitor',
+    active_handoffs: 'Active handoffs',
+    always_on_title: 'Always-on',
+    always_on_personal: 'Personal',
+    always_on_org: 'Org',
+    always_on_hint: 'Always included in grounding.',
+    agents_title: 'Agents',
+    agents_available: 'agents available',
+    agents_search: 'Search agent…',
+    skills_title: 'Skills',
+    skills_available: 'skills available',
+    skill_filter: 'Search skill…',
+    suggest_1_title: 'Quote 500 Marluvas Goliath · ACME MX',
+    suggest_1_hint: 'Generate B2B quote with evidence + retention',
+    suggest_2_title: 'Consolidate last week feedback',
+    suggest_2_hint: 'Summarize patterns, propose gold samples',
+    suggest_3_title: 'Pipeline summary Colombia',
+    suggest_3_hint: 'Q1 status with revenue + top customers',
+    suggest_4_title: 'Verify POL_MX_001 compliance',
+    suggest_4_hint: 'Fiscal + technical check on active drafts',
+    new_conversation: 'New conversation',
+    recent_conversations: 'Recent',
+    message_from_user: 'Your message',
+    message_from_agent: 'Agent response',
+    draft_pill_prefix: 'Draft',
+    draft_awaiting: 'awaiting_approval',
+    open_draft: 'Open draft',
+    agent_header_prefix: 'Talking with:',
+    open_chat_with_agent: 'Open chat with this agent'
+  },
+  pattern: {
+    learned: 'Pattern learned',
+    learned_short: 'Learned',
+    gold: 'Gold sample',
+    none: 'No pattern yet',
+    sealed: 'Sealed base'
+  },
+  voc: {
+    title: 'Voice of customer',
+    sentiment_positive: 'Positive',
+    sentiment_neutral: 'Neutral',
+    sentiment_negative: 'Negative'
+  },
+  message_actions: {
+    copy: 'Copy',
+    iterate: 'Iterate',
+    handoff: 'Handoff',
+    open_draft: 'Open draft',
+    explain_evidence: 'Explain evidence',
+    consolidate: 'Consolidate',
+    feedback: 'Feedback',
+    rerun: 'Rerun'
+  },
+  iteration: {
+    n_of_m: 'Iteration {n} of {m}'
+  },
+  bulk: {
+    select_all: 'Select all',
+    approve_selected: 'Approve selected',
+    confirm_bulk: '{n} drafts will be approved. Continue?',
+    confirm_bulk_irreversible: '{n} selected drafts include irreversible actions. Confirm explicitly.',
+    done: '{n} drafts approved'
+  },
+  promote: {
+    step1: 'Preview + diff',
+    step2: 'Sanitization checklist',
+    step3: 'Confirmation',
+    check_pii: 'No PII',
+    check_credentials: 'No credentials',
+    check_scope: 'Scope assigned',
+    check_ttl: 'TTL defined',
+    next: 'Next',
+    back: 'Back',
+    confirm: 'Promote',
+    done: 'Promoted successfully'
+  },
+  connector: {
+    cfg_tab_creds: 'Credentials',
+    cfg_tab_scope: 'Scope',
+    cfg_tab_test: 'Test connection',
+    test_run: 'Connection test',
+    test_ok: 'OK · latency {ms}ms',
+    test_fail: 'Failed · check credentials'
+  }
+};

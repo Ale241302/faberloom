@@ -1,0 +1,281 @@
+/* FaberLoom v1 Beta — i18n PT-BR */
+window.__faberloom = window.__faberloom || {};
+window.__faberloom.i18n_pt = {
+  common: {
+    approve: 'Aprovar', reject: 'Rejeitar', edit: 'Editar', feedback: 'Feedback',
+    loading: 'Carregando…', empty: 'Sem itens', error: 'Algo deu errado',
+    retry: 'Tentar novamente', cancel: 'Cancelar', save: 'Salvar', close: 'Fechar',
+    search: 'Buscar…', filters: 'Filtros', clear: 'Limpar', export: 'Exportar',
+    view: 'Ver', create: 'Criar', delete: 'Excluir', confirm: 'Confirmar',
+    yes: 'Sim', no: 'Não', ok: 'OK', copy: 'Copiar',
+    details: 'Detalhes', more: 'Ver mais', less: 'Ver menos',
+    launcher_pending: 'Launcher pendente · ⌘K',
+    submitted: 'Enviado', not_available: 'Indisponível',
+    scope: 'Alcance', version: 'Versão', status: 'Estado'
+  },
+  a11y: {
+    skip_to_main: 'Pular para o conteúdo',
+    breadcrumb: 'Navegação', main: 'Conteúdo principal', close_dialog: 'Fechar diálogo'
+  },
+  topbar: {
+    search: 'Buscar…', validate: 'Validar',
+    tenant: 'Tenant', role: 'Papel', language: 'Idioma',
+    theme_light: 'Tema claro', theme_dark: 'Tema escuro', theme_toggle: 'Alternar tema',
+    view_state: 'Estado da vista', user_menu: 'Menu usuário'
+  },
+  nav: {
+    group_main: 'Principal', group_build: 'Construção', group_admin: 'Gestão',
+    chat: 'Chat', 'chat': 'Chat',
+    bandeja: 'Caixa', 'bandeja-lista': 'Caixa', 'bandeja-detail': 'Caixa · Detalhe',
+    agentes: 'Agentes', 'agent-console': 'Console Agente',
+    workflows: 'Workflows', 'workflows-canvas': 'Workflows',
+    runs: 'Execuções', 'runs-timeline': 'Execuções',
+    skills: 'Skill Studio', 'skill-studio': 'Skill Studio',
+    consolidaciones: 'Consolidações', consolidation: 'Consolidações',
+    design: 'Design System', 'design-system': 'Design System',
+    admin_users: 'Usuários', 'admin-users': 'Usuários',
+    admin_knowledge: 'Conhecimento', 'admin-knowledge': 'Conhecimento',
+    admin_audit: 'Auditoria', 'admin-audit': 'Auditoria',
+    admin_tenant: 'Tenant', 'admin-tenant': 'Tenant',
+    admin_connectors: 'Conectores', 'admin-connectors': 'Conectores',
+    /* [V4-PATCH 2026-04-22] */
+    admin_llm_infra: 'LLM · Infra', 'admin-llm-infra': 'LLM · Infra',
+    ops_health: 'Ops Health', 'ops-health': 'Ops Health'
+  },
+  bandeja: {
+    title: 'Caixa de saída', subtitle: 'Drafts aguardando revisão + arquivo recente',
+    col_agent: 'Agente', col_subject: 'Assunto', col_state: 'Estado',
+    col_risk: 'Risco', col_age: 'Idade', col_actions: 'Ações', col_recipient: 'Destinatário',
+    bulk_approve: 'Aprovar selecionados',
+    filter_state: 'Filtrar por estado', filter_agent: 'Filtrar por agente', filter_entity: 'Filtrar por conta',
+    empty: 'Sem drafts pendentes', empty_filtered: 'Nenhum draft corresponde aos filtros',
+    tab_content: 'Conteúdo', tab_evidence: 'Evidência', tab_risk: 'Risco', tab_trace: 'Trace',
+    confirm_approve: 'Confirmar aprovação?',
+    confirm_approve_irreversible: 'Ação irreversível. Confirmar?',
+    approve_done: 'Draft aprovado', reject_done: 'Draft rejeitado',
+    edit_draft: 'Editar draft', fingerprint: 'Model fingerprint',
+    recipient: 'Destinatário', subject: 'Assunto',
+    detail: { risk: { class: 'Classe de risco', levels: { none: 'Nenhum', low: 'Baixo', medium: 'Médio', high: 'Alto', critical: 'Crítico' } } },
+    /* [V3-PATCH] polymorphic */
+    subtitle_v3: 'Workspace unificado · 12 tipos de itens + saved views',
+    col_kind: 'Tipo',
+    col_sender: 'Origem',
+    kind: { draft:'Draft', inbound_email:'Email entrante', inbound_msg:'Mensagem', crm_event:'CRM', alert:'Alerta', approval_request:'Aprovação', escalation:'Escalação', feedback_reply:'Feedback', sla_timer:'SLA', webhook:'Webhook', audit_alert:'Audit', task:'Tarefa' },
+    view: { attention:'Atenção', triage:'Triage', approve:'Aprovar', mine:'Minhas', team:'Equipe' }
+  },
+  skill: {
+    title: 'Skill Studio',
+    col_base: 'Base selada', col_manual: 'Overlay manual', col_learned: 'Overlay aprendido',
+    base_sealed: 'Base selada · somente leitura',
+    add_rule: 'Adicionar regra', consolidate: 'Consolidar',
+    thermo_cold: 'Frio', thermo_warm: 'Morno', thermo_hot: 'Quente',
+    ttl_label: 'TTL overlay aprendido (dias)',
+    gold_samples: 'Gold samples',
+    learned: { cold: 'Frio', warm: 'Morno', hot: 'Quente' },
+    pending_consolidation: 'Consolidação pendente',
+    version: 'Versão', author: 'Autor',
+    rule_placeholder: 'Descreva a regra em uma linha',
+    pattern_evidence: 'Evidências',
+    manual_empty: 'Sem regras manuais ainda', learned_empty: 'Sem padrões detectados'
+  },
+  agents: { create_btn:'Criar agente', edit_btn:'Editar AgentSpec', clone_btn:'Clonar', pause_btn:'Pausar', resume_btn:'Reativar', retire_btn:'Aposentar', rollback_btn:'Rollback' },
+  agent: {
+    title: 'Console do agente',
+    tab_versioning: 'Versionamento',
+    kpi_runs: 'Runs 30d', kpi_approval: 'Aprovação', kpi_latency: 'Latência p50',
+    kpi_fail: 'Taxa falha', kpi_cost: 'Custo USD 30d',
+    tab_summary: 'Resumo', tab_skills: 'Skills', tab_memory: 'Memória', tab_logs: 'Logs',
+    unlock_criterion: 'Critério para subir de nível', unlock_approver: 'Aprova · Tenant Owner',
+    memory: { run_session: 'Run / sessão', org_account: 'Org / conta', curated: 'Curada (Gold)' },
+    last_runs: 'Últimas execuções', trigger_word: 'Trigger'
+  },
+  autonomy: {
+    label: 'Nível de autonomia',
+    l0: { name: 'Shadow',            help: 'Observa, não fala com o usuário.' },
+    l1: { name: 'Propõe',            help: 'Draft sempre, aprovação obrigatória.' },
+    l2: { name: 'Auto-baixo',        help: 'Ações internas sem aprovação.' },
+    l3: { name: 'Auto+notifica',     help: 'Executa e notifica após o fato.' },
+    l4: { name: 'Auto+exceções',     help: 'Auto em fluxos estreitos; só exceções ao humano.' }
+  },
+  states: {
+    drafting: 'Rascunho', awaiting_approval: 'Aguardando aprovação', approved: 'Aprovado',
+    executing: 'Executando', waiting_external_signal: 'Aguardando sinal externo', blocked: 'Bloqueado',
+    completed: 'Concluído', failed: 'Falhou', escalated: 'Escalado', rejected: 'Rejeitado',
+    untriaged: 'Sem triagem', assigned: 'Atribuído', pending: 'Pendente', pending_my_approval: 'Aguardando minha aprovação', acknowledged: 'Ack', running: 'Em curso'
+  },
+  risk: {
+    reversibility: 'Reversibilidade', side_effects: 'Efeitos colaterais',
+    min_autonomy: 'Autonomia mínima', required_role: 'Papel requerido', audit_class: 'Classe auditoria',
+    reversible_24h: 'Reversível ≤24h', reversible_cost: 'Reversível com custo',
+    irreversible: 'Irreversível', irreversible_cost: 'Irreversível com custo'
+  },
+  workflow: {
+    title: 'Workflows', palette: 'Paleta', inspector: 'Inspector',
+    node_trigger: 'Trigger', node_retrieve: 'Retrieve', node_llm: 'LLM',
+    node_validator: 'Validator', node_hitl: 'HITL', node_action: 'Action', node_branch: 'Branch',
+    execute: 'Executar', select_node: 'Selecione um nó'
+  },
+  feedback: {
+    title: 'Enviar feedback',
+    subtitle: 'Seu feedback alimenta os gold samples deste agente',
+    reason_no_evidence: 'Claim sem evidência', reason_tone: 'Tom inadequado',
+    reason_wrong_data: 'Dado incorreto', reason_risky: 'Ação arriscada', reason_other: 'Outro',
+    note: 'Notas (opcional)', submit: 'Enviar feedback', cancel: 'Cancelar',
+    submitted: 'Feedback enviado',
+    reasons: {
+      claim: { title: 'Claim sem evidência', help: 'O agente afirma algo sem citar fonte.' },
+      tone:  { title: 'Tom inadequado',    help: 'O estilo não combina com a marca / contexto.' },
+      data:  { title: 'Dado incorreto',    help: 'Número, data ou entidade incorreta.' },
+      risk:  { title: 'Ação arriscada',    help: 'Ação proposta tem risco não avaliado.' },
+      other: { title: 'Outro',             help: 'Qualquer outra observação.' }
+    }
+  },
+  consolidation: {
+    title: 'Consolidação',
+    col_candidate: 'Candidate', col_active: 'Active', col_archived: 'Archived', col_reverted: 'Reverted',
+    approve: 'Aprovar', reject: 'Rejeitar', rollback: 'Reverter',
+    diff_before: 'Antes', diff_after: 'Depois',
+    accumulated: 'padrões acumulados desde',
+    suggested_rule: 'Regra sugerida',
+    sections: { learned: 'Aprendido', applies: 'Aplica a', impact: 'Impacto', confirm: 'Confirmar' },
+    crossSkill: 'Cross-skill', before: 'Antes', after: 'Depois',
+    confirm: 'Aprovar consolidação', discard: 'Descartar', submitted: 'Consolidação aprovada'
+  },
+  admin: {
+    users_title: 'Usuários', users_invite: 'Convidar usuário',
+    users_col_name: 'Nome', users_col_email: 'Email', users_col_role: 'Papel',
+    users_col_dept: 'Departamento', users_col_last: 'Última atividade',
+    knowledge_title: 'Fluxo de conhecimento', knowledge_promote: 'Promover',
+    knowledge_scope_global: 'Global', knowledge_scope_org: 'Organização',
+    knowledge_scope_dept: 'Departamento', knowledge_scope_user: 'Usuário',
+    audit_title: 'Auditoria', audit_export: 'Exportar CSV',
+    audit_col_ts: 'Timestamp', audit_col_actor: 'Ator', audit_col_action: 'Ação',
+    audit_col_target: 'Alvo', audit_col_sev: 'Severidade',
+    tenant_title: 'Tenant', tenant_identity: 'Identidade SSO',
+    tenant_retention: 'Retenção', tenant_branding: 'Branding',
+    tenant_flags: 'Feature flags', tenant_smtp: 'SMTP (Postmark)',
+    tenant_backup: 'Backup · RPO 24h · RTO 2h',
+    connectors_title: 'Conectores',
+    connector_connected: 'Conectado', connector_disconnected: 'Desconectado', connector_planned: 'Planejado',
+    break_glass: 'Ativar break-glass',
+    break_glass_warn: 'Acesso admin privilegiado. Máximo 8h. MFA obrigatório.',
+    break_glass_active: 'Break-glass ativo',
+    private_by_default: 'Private-by-default'
+  },
+  ops: {
+    health_title: 'Ops Health',
+    containers: 'Contêineres', containers_dev: 'Dev (4)', containers_staging: 'Staging (11)',
+    slos: 'SLOs', slos_p95: 'p95 retrieval', slos_avail: 'Disponibilidade', slos_error: 'Taxa de erro',
+    jobs: 'Jobs', alerts: 'Alerts',
+    tables: 'Tabelas FROZEN', tables_sprint: 'Sprint', tables_rows: 'Linhas', tables_size: 'Tamanho (KB)',
+    rls_debug: 'Variáveis RLS de sessão (debug)'
+  },
+  error: {
+    boundary: { title: 'Algo quebrou', subtitle: 'Reporte o problema e recarregue.' },
+    module:   { title: 'Este módulo está indisponível', subtitle: 'O resto do sistema segue operando. Você pode tentar de novo.', retry: 'Tentar novamente' }
+  },
+
+  /* ═════ [V2-PATCH 2026-04-19] · Chat + pattern + voc + message_actions + iteration ═════ */
+  chat: {
+    empty_title: 'O que você quer resolver?',
+    empty_subtitle: 'Escolha um agente, uma skill, ou experimente uma sugestão.',
+    composer_placeholder_1: 'Digite sua mensagem…',
+    composer_placeholder_2: 'Peça uma cotação, consolidar, ou outra coisa…',
+    composer_placeholder_3: 'Exemplo: Cotação 500 Marluvas Goliath XT MX',
+    send: 'Enviar',
+    attach: 'Anexar',
+    active_skills: 'Skills ativas',
+    handoff_to: 'Handoff para',
+    talking_to: 'Conversando com',
+    iterate_this_draft: 'Iterar neste draft',
+    iterate_hint: 'Refinar o draft sem perder contexto.',
+    iterate_go: 'Iterar',
+    iterate_n: 'Iteração',
+    grounded_in_title: 'Grounded in',
+    grounded_in_empty: 'Sem fontes ainda.',
+    sla_p95_label: 'SLA p95',
+    sla_p95_breach_warn: 'Perto do limite — monitorar',
+    active_handoffs: 'Handoffs ativos',
+    always_on_title: 'Always-on',
+    always_on_personal: 'Pessoal',
+    always_on_org: 'Org',
+    always_on_hint: 'Sempre incluído no grounding.',
+    agents_title: 'Agentes',
+    agents_available: 'agentes disponíveis',
+    agents_search: 'Buscar agente…',
+    skills_title: 'Skills',
+    skills_available: 'skills disponíveis',
+    skill_filter: 'Buscar skill…',
+    suggest_1_title: 'Cotar 500 Marluvas Goliath · ACME MX',
+    suggest_1_hint: 'Gera cotação B2B com evidência + retenção',
+    suggest_2_title: 'Consolidar feedback da última semana',
+    suggest_2_hint: 'Resume padrões, propõe gold samples',
+    suggest_3_title: 'Resumo pipeline Colômbia',
+    suggest_3_hint: 'Status Q1 com revenue + top clientes',
+    suggest_4_title: 'Verificar cumprimento POL_MX_001',
+    suggest_4_hint: 'Check fiscal e norma técnica em drafts ativos',
+    new_conversation: 'Nova conversa',
+    recent_conversations: 'Recentes',
+    message_from_user: 'Sua mensagem',
+    message_from_agent: 'Resposta do agente',
+    draft_pill_prefix: 'Draft',
+    draft_awaiting: 'awaiting_approval',
+    open_draft: 'Abrir draft',
+    agent_header_prefix: 'Conversando com:',
+    open_chat_with_agent: 'Abrir chat com este agente'
+  },
+  pattern: {
+    learned: 'Pattern learned',
+    learned_short: 'Learned',
+    gold: 'Gold sample',
+    none: 'Sem padrão ainda',
+    sealed: 'Base selada'
+  },
+  voc: {
+    title: 'Voice of customer',
+    sentiment_positive: 'Positivo',
+    sentiment_neutral: 'Neutro',
+    sentiment_negative: 'Negativo'
+  },
+  message_actions: {
+    copy: 'Copiar',
+    iterate: 'Iterar',
+    handoff: 'Handoff',
+    open_draft: 'Abrir draft',
+    explain_evidence: 'Explicar evidência',
+    consolidate: 'Consolidar',
+    feedback: 'Feedback',
+    rerun: 'Rerun'
+  },
+  iteration: {
+    n_of_m: 'Iteração {n} de {m}'
+  },
+  bulk: {
+    select_all: 'Selecionar todos',
+    approve_selected: 'Aprovar selecionados',
+    confirm_bulk: '{n} drafts serão aprovados. Continuar?',
+    confirm_bulk_irreversible: '{n} drafts selecionados incluem ações irreversíveis. Confirmar explicitamente.',
+    done: '{n} drafts aprovados'
+  },
+  promote: {
+    step1: 'Preview + diff',
+    step2: 'Checklist sanitização',
+    step3: 'Confirmação',
+    check_pii: 'Sem PII',
+    check_credentials: 'Sem credentials',
+    check_scope: 'Scope atribuído',
+    check_ttl: 'TTL definido',
+    next: 'Próximo',
+    back: 'Voltar',
+    confirm: 'Promover',
+    done: 'Promovido com sucesso'
+  },
+  connector: {
+    cfg_tab_creds: 'Credentials',
+    cfg_tab_scope: 'Scope',
+    cfg_tab_test: 'Test connection',
+    test_run: 'Teste de conexão',
+    test_ok: 'OK · latência {ms}ms',
+    test_fail: 'Falhou · verifique credentials'
+  }
+};

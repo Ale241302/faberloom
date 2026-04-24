@@ -1,0 +1,224 @@
+<a href="#fl-slot" class="skip-link" data-i18n="a11y.skip_to_main">Saltar al contenido</a>
+
+<div class="fl-app">
+  <header class="fl-topbar" role="banner">
+    <div class="fl-topbar__logo" aria-label="FaberLoom">
+      <svg viewBox="0 0 64 64" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="var(--brand-coral)"/>
+        <g stroke="var(--brand-cream)" stroke-width="3.5" stroke-linecap="round">
+          <line x1="14" y1="20" x2="50" y2="20"/>
+          <line x1="14" y1="32" x2="50" y2="32"/>
+          <line x1="14" y1="44" x2="50" y2="44"/>
+          <line x1="22" y1="14" x2="22" y2="50"/>
+          <line x1="32" y1="14" x2="32" y2="50"/>
+          <line x1="42" y1="14" x2="42" y2="50"/>
+        </g>
+      </svg>
+      <span>FaberLoom</span>
+      <span class="chip chip-accent" style="margin-left:var(--space-2); font-size:10px; letter-spacing:0.08em;">BETA</span>
+    </div>
+    <span id="fl-breadcrumb" class="fl-topbar__breadcrumb" aria-live="polite"></span>
+    <div class="fl-topbar__spacer"></div>
+
+    <div class="fl-topbar__actions">
+      <button type="button" class="fl-topbar__search" data-action="launcher" aria-label="Buscar">
+        <span data-i18n="topbar.search">Buscar…</span>
+        <kbd>⌘K</kbd>
+      </button>
+
+      <select id="fl-tenant-switch" class="select btn-sm" aria-label="Tenant" style="min-height:32px;padding:4px 8px;width:auto;min-width:140px;">
+        <option value="t_muito">Muito Work</option>
+        <option value="t_demo_mx">Demo Partner MX</option>
+        <option value="t_demo_co">Demo Partner CO</option>
+      </select>
+
+      <select id="fl-role-switch" class="select btn-sm" aria-label="Role" style="min-height:32px;padding:4px 8px;width:auto;min-width:110px;">
+        <option value="owner">Owner</option>
+        <option value="admin">Admin</option>
+        <option value="operator">Operator</option>
+      </select>
+
+      <select id="fl-lang-switch" class="select btn-sm" aria-label="Language" style="min-height:32px;padding:4px 8px;width:auto;min-width:60px;">
+        <option value="es">ES</option>
+        <option value="en">EN</option>
+        <option value="pt">PT</option>
+      </select>
+
+      <button type="button" id="fl-theme-toggle" class="btn btn-ghost btn-sm" aria-label="Toggle theme" title="Toggle theme">
+        <span id="fl-theme-icon">☾</span>
+      </button>
+
+      <select id="fl-viewstate-switch" class="select btn-sm" aria-label="View state" title="View state" style="min-height:32px;padding:4px 8px;width:auto;min-width:110px;">
+        <option value="loaded">Loaded</option>
+        <option value="empty">Empty</option>
+        <option value="loading">Loading</option>
+        <option value="error">Error</option>
+      </select>
+
+      <button type="button" id="fl-validate" class="btn btn-ghost btn-sm" aria-label="Validate a11y" title="Run axe-core" data-i18n="topbar.validate">Validar</button>
+
+      <div style="width:1px;height:24px;background:var(--stroke-default);margin:0 var(--space-1);" aria-hidden="true"></div>
+
+      <button type="button" class="btn btn-ghost btn-sm" aria-label="User menu">
+        <span style="display:inline-flex;align-items:center;justify-content:center;width:28px;height:28px;border-radius:50%;background:var(--accent-primary);color:#fff;font-weight:600;font-size:12px;">AL</span>
+      </button>
+    </div>
+  </header>
+
+  <aside class="fl-sidebar" role="navigation" aria-label="Main">
+    <div class="fl-nav-group">
+      <div class="fl-nav-group__title" data-i18n="nav.group_main">Principal</div>
+      <!-- [V2-PATCH 2026-04-19] Chat nav item -->
+      <a href="#/chat" class="fl-nav-link" data-route="chat" data-i18n="nav.chat">Chat</a>
+      <a href="#/bandeja" class="fl-nav-link" data-route="bandeja-lista" data-i18n="nav.bandeja">Bandeja</a>
+      <!-- [V3.5-PATCH 2026-04-19] nav target moved from console redirect to list -->
+      <a href="#/agentes" class="fl-nav-link" data-route="agent-list" data-i18n="nav.agentes">Agentes</a>
+      <a href="#/workflows" class="fl-nav-link" data-route="workflows-canvas" data-i18n="nav.workflows">Workflows</a>
+      <a href="#/runs" class="fl-nav-link" data-route="runs-timeline" data-i18n="nav.runs">Runs</a>
+    </div>
+    <div class="fl-nav-group">
+      <div class="fl-nav-group__title" data-i18n="nav.group_build">Construcción</div>
+      <a href="#/skills/sk_cotizar" class="fl-nav-link" data-route="skill-studio" data-i18n="nav.skills">Skill Studio</a>
+      <a href="#/consolidaciones" class="fl-nav-link" data-route="consolidation" data-i18n="nav.consolidaciones">Consolidaciones</a>
+      <a href="#/design" class="fl-nav-link" data-route="design-system" data-i18n="nav.design">Design System</a>
+    </div>
+    <div class="fl-nav-group" id="fl-nav-admin">
+      <div class="fl-nav-group__title" data-i18n="nav.group_admin">Gestión</div>
+      <a href="#/admin/usuarios" class="fl-nav-link" data-route="admin-users" data-i18n="nav.admin_users">Usuarios</a>
+      <a href="#/admin/conocimiento" class="fl-nav-link" data-route="admin-knowledge" data-i18n="nav.admin_knowledge">Conocimiento</a>
+      <a href="#/admin/auditoria" class="fl-nav-link" data-route="admin-audit" data-i18n="nav.admin_audit">Auditoría</a>
+      <a href="#/admin/tenant" class="fl-nav-link" data-route="admin-tenant" data-i18n="nav.admin_tenant">Tenant</a>
+      <a href="#/admin/conectores" class="fl-nav-link" data-route="admin-connectors" data-i18n="nav.admin_connectors">Conectores</a>
+      <!-- [V4-PATCH 2026-04-22] LLM Orchestration & Infra (tiers · residency · CB · HA · cold start · voice · Q1-Q18 · F2 roadmap) -->
+      <a href="#/admin/llm-orchestration" class="fl-nav-link" data-route="admin-llm-infra" data-i18n="nav.admin_llm_infra">LLM · Infra</a>
+      <a href="#/ops/health" class="fl-nav-link" data-route="ops-health" data-i18n="nav.ops_health">Ops Health</a>
+    </div>
+  </aside>
+
+  <main id="fl-slot" class="fl-main" tabindex="-1" role="main" aria-live="polite"></main>
+</div>
+
+<div id="fl-live" class="live-region" aria-live="polite" aria-atomic="true"></div>
+<div id="fl-toast-slot" aria-live="polite"></div>
+<div id="fl-overlay-slot"></div>
+
+<script>
+(function () {
+  const FL = window.__faberloom;
+  if (!FL) { console.error('boot fragment must load before shell'); return; }
+
+  /* ── Topbar wiring ──────────────────────────────────── */
+  function wireTopbar() {
+    const tenantSel = document.getElementById('fl-tenant-switch');
+    const roleSel   = document.getElementById('fl-role-switch');
+    const langSel   = document.getElementById('fl-lang-switch');
+    const themeBtn  = document.getElementById('fl-theme-toggle');
+    const themeIc   = document.getElementById('fl-theme-icon');
+    const vsSel     = document.getElementById('fl-viewstate-switch');
+    const valBtn    = document.getElementById('fl-validate');
+
+    if (tenantSel) {
+      tenantSel.value = FL.session.tenantId || 't_muito';
+      tenantSel.addEventListener('change', e => FL.session.setTenant(e.target.value));
+    }
+    if (roleSel) {
+      roleSel.value = FL.session.role || 'owner';
+      roleSel.addEventListener('change', e => FL.session.setRole(e.target.value));
+    }
+    if (langSel) {
+      langSel.value = FL.i18n.current() || 'es';
+      langSel.addEventListener('change', e => FL.i18n.setLang(e.target.value));
+    }
+    if (themeBtn) {
+      themeIc.textContent = FL.theme.current() === 'dark' ? '☀' : '☾';
+      themeBtn.addEventListener('click', () => FL.theme.toggle());
+    }
+    if (vsSel) {
+      vsSel.addEventListener('change', e => FL.bus.emit('view-state:change', e.target.value));
+    }
+    if (valBtn) {
+      valBtn.addEventListener('click', runAxe);
+    }
+    const launcherBtn = document.querySelector('[data-action="launcher"]');
+    if (launcherBtn) {
+      launcherBtn.addEventListener('click', () => FL.bus.emit('toast', { kind: 'info', message: FL.i18n.t('common.launcher_pending', 'Launcher pendiente · ⌘K') }));
+    }
+
+    // theme sync to icon
+    FL.bus.on('theme:change', t => { if (themeIc) themeIc.textContent = t === 'dark' ? '☀' : '☾'; });
+  }
+
+  /* ── Role-based nav visibility ─────────────────────── */
+  function applyRoleVisibility(role) {
+    const admin = document.getElementById('fl-nav-admin');
+    if (!admin) return;
+    admin.style.display = (role === 'operator') ? 'none' : '';
+  }
+
+  /* ── Active nav highlight ──────────────────────────── */
+  function syncActiveNav(moduleId) {
+    document.querySelectorAll('.fl-nav-link').forEach(a => {
+      a.classList.toggle('fl-nav-link--active', a.getAttribute('data-route') === moduleId);
+    });
+  }
+
+  /* ── Breadcrumb ────────────────────────────────────── */
+  function syncBreadcrumb(moduleId, params) {
+    const bc = document.getElementById('fl-breadcrumb');
+    if (!bc) return;
+    const navKey = 'nav.' + moduleId;
+    const label = FL.i18n.t(navKey, moduleId);
+    let text = label;
+    if (params && params.id) text += ' · ' + params.id;
+    bc.textContent = text;
+  }
+
+  /* ── axe-core on demand ────────────────────────────── */
+  let axeLoaded = false;
+  function runAxe() {
+    const slot = document.getElementById('fl-slot');
+    if (!slot) return;
+    const doRun = () => {
+      if (!window.axe) { alert('axe-core no se pudo cargar (offline?)'); return; }
+      window.axe.run(document.body, { runOnly: { type: 'tag', values: ['wcag2a', 'wcag2aa'] } })
+        .then(res => showAxeResults(res))
+        .catch(e => alert('axe run failed: ' + e.message));
+    };
+    if (axeLoaded) { doRun(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/axe-core/4.8.4/axe.min.js';
+    s.onload = () => { axeLoaded = true; doRun(); };
+    s.onerror = () => alert('No se pudo cargar axe-core (offline?)');
+    document.head.appendChild(s);
+  }
+  function showAxeResults(res) {
+    const v = res.violations || [];
+    const p = res.passes || [];
+    const msg = v.length === 0
+      ? '✓ ' + p.length + ' checks pasaron · 0 violaciones A/AA'
+      : v.length + ' violaciones A/AA encontradas: ' + v.map(x => x.id).join(', ');
+    FL.bus.emit('toast', { kind: v.length === 0 ? 'success' : 'warn', message: msg, duration: 8000 });
+    console.table(v.map(x => ({ id: x.id, impact: x.impact, nodes: x.nodes.length, help: x.help })));
+  }
+
+  /* ── boot listeners ────────────────────────────────── */
+  FL.bus.on('role:change', applyRoleVisibility);
+  FL.bus.on('route:mounted', e => {
+    syncActiveNav(e.moduleId);
+    syncBreadcrumb(e.moduleId, e.params);
+  });
+  FL.bus.on('lang:change', () => {
+    // re-apply i18n to shell chrome
+    FL.i18n.applyToDom(document.querySelector('.fl-app'));
+    const e = FL.bus._lastRoute;
+  });
+
+  // wire once DOM parsed
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => { wireTopbar(); applyRoleVisibility(FL.session.role); });
+  } else {
+    wireTopbar();
+    applyRoleVisibility(FL.session.role);
+  }
+})();
+</script>

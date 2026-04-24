@@ -1,0 +1,12 @@
+# Ignore zip files
+*.zip
+
+# Ignore node_modules
+node_modules/
+
+# Ignore OS files
+.DS_Store
+Thumbs.db
+
+# Ignore log files
+*.log

@@ -1,0 +1,62 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null, state = { agent: 'all', page: 0 };
+  const PAGE_SIZE = 20;
+
+  function mount(slot) {
+    root = slot; injectStyles();
+    render();
+    return { unmount: () => { if (root) root.innerHTML = ''; } };
+  }
+
+  function render() {
+    const t = k => i18n.t(k);
+    const all = FL.mock.runs.filter(r => state.agent === 'all' || r.agentId === state.agent);
+    const totalPages = Math.max(1, Math.ceil(all.length / PAGE_SIZE));
+    const pageRuns = all.slice(state.page * PAGE_SIZE, (state.page + 1) * PAGE_SIZE);
+    const agentOpts = '<option value="all">— Todos —</option>' + FL.mock.agents.map(a => '<option value="' + a.id + '">' + a.name + '</option>').join('');
+
+    root.innerHTML =
+      '<div class="rt-wrap">' +
+      '<header class="rt-head"><h1 class="t-display-md">' + t('nav.runs') + '</h1>' +
+      '<label><span class="t-label-sm">' + t('bandeja.filter_agent') + '</span>' +
+      '<select class="select" data-f="agent">' + agentOpts + '</select></label></header>' +
+      '<table class="rt-table">' +
+        '<thead><tr><th>id</th><th>agent</th><th>started</th><th>state</th><th>tokens</th><th>$</th></tr></thead>' +
+        '<tbody>' + pageRuns.map(r => {
+          const ag = FL.mock.agents.find(a => a.id === r.agentId) || { name: '—' };
+          return '<tr><td><code>' + r.id + '</code></td><td>' + ag.name + '</td><td class="mono muted">' + r.startedAt.slice(5, 16).replace('T', ' ') + '</td><td>' + W.draftStateBadge(r.finalState) + '</td><td class="mono">' + r.tokensUsed + '</td><td class="mono">$' + r.costUSD + '</td></tr>';
+        }).join('') + '</tbody>' +
+      '</table>' +
+      '<div class="rt-pager"><button class="btn btn-sm" ' + (state.page === 0 ? 'disabled' : '') + ' data-p="prev">« Previo</button>' +
+      '<span class="muted">página ' + (state.page + 1) + ' / ' + totalPages + '</span>' +
+      '<button class="btn btn-sm" ' + (state.page >= totalPages - 1 ? 'disabled' : '') + ' data-p="next">Siguiente »</button></div>' +
+      '</div>';
+
+    root.querySelector('[data-f="agent"]').addEventListener('change', e => { state.agent = e.target.value; state.page = 0; render(); });
+    const pv = root.querySelector('[data-p="prev"]'), nx = root.querySelector('[data-p="next"]');
+    if (pv) pv.addEventListener('click', () => { if (state.page > 0) { state.page--; render(); } });
+    if (nx) nx.addEventListener('click', () => { if ((state.page + 1) * PAGE_SIZE < all.length) { state.page++; render(); } });
+  }
+
+  function injectStyles() {
+    if (document.getElementById('rt-styles')) return;
+    const s = document.createElement('style'); s.id = 'rt-styles';
+    s.textContent = `
+.rt-wrap { display:flex; flex-direction:column; gap:var(--space-3); }
+.rt-head { display:flex; justify-content:space-between; align-items:end; gap:var(--space-3); flex-wrap:wrap; }
+.rt-head h1 { margin:0; }
+.rt-head label { display:flex; flex-direction:column; gap:var(--space-1); min-width:200px; }
+.rt-table { width:100%; border-collapse:collapse; background:var(--bg-surface); border:1px solid var(--stroke-default); border-radius:var(--radius-lg); overflow:hidden; font-size:13px; }
+.rt-table th, .rt-table td { padding:var(--space-2) var(--space-3); text-align:left; border-bottom:1px solid var(--stroke-default); }
+.rt-table th { font-size:11px; text-transform:uppercase; letter-spacing:0.04em; color:var(--text-muted); font-weight:600; background:var(--bg-subtle); }
+.rt-pager { display:flex; justify-content:center; align-items:center; gap:var(--space-3); padding:var(--space-2); }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['runs-timeline'] = { mount, meta: { route: '/runs' } };
+})();
+</script>

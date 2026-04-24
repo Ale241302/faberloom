@@ -1,0 +1,156 @@
+<script>
+(function () {
+  const FL = window.__faberloom; if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n;
+  let root = null;
+
+  function mount(slot) { root = slot; injectStyles(); render(); return { unmount: () => { if (root) root.innerHTML = ''; } }; }
+
+  function render() {
+    const cons = FL.mock.consolidations;
+    const cols = ['candidate','active','archived','revoked'];
+    const t = k => i18n.t(k);
+    const labelMap = { candidate: t('consolidation.col_candidate'), active: t('consolidation.col_active'), archived: t('consolidation.col_archived'), revoked: t('consolidation.col_reverted') };
+
+    root.innerHTML =
+      '<div class="cn-wrap">' +
+      '<header><h1 class="t-display-md">' + t('consolidation.title') + '</h1></header>' +
+      '<div class="cn-kanban">' +
+      cols.map(col => {
+        const items = cons.filter(c => c.status === col);
+        return (
+          '<section class="cn-col">' +
+            '<header class="cn-col__head"><h2 class="t-heading-md">' + labelMap[col] + '</h2>' +
+            '<span class="chip">' + items.length + '</span></header>' +
+            '<div class="cn-col__body">' +
+              (items.length
+                ? items.map(c => renderCard(c)).join('')
+                : '<p class="muted t-body-sm">Sin items</p>') +
+            '</div>' +
+          '</section>'
+        );
+      }).join('') +
+      '</div>' +
+      '</div>';
+
+    root.querySelectorAll('[data-act="review"]').forEach(b => {
+      b.addEventListener('click', () => {
+        const id = b.getAttribute('data-id');
+        const c = FL.mock.consolidations.find(x => x.id === id);
+        if (c) W.openConsolidationModal(Object.assign({ thermometer: 'hot', patternCount: 6, accumulatedSince: c.triggeredAt }, c));
+      });
+    });
+    /* [V3-PATCH 2026-04-19] promote-to-base + archive */
+    root.querySelectorAll('[data-act="promote-base"]').forEach(b => {
+      b.addEventListener('click', () => promoteToBase(b.getAttribute('data-id')));
+    });
+    root.querySelectorAll('[data-act="archive"]').forEach(b => {
+      b.addEventListener('click', () => archiveConsolidation(b.getAttribute('data-id')));
+    });
+  }
+
+  function renderCard(c) {
+    const skill = FL.mock.skills[c.skillId] || { name: c.skillId };
+    return (
+      '<article class="cn-card">' +
+        '<div class="cn-card__head"><strong>' + skill.name + '</strong></div>' +
+        '<div class="cn-card__rule t-body-sm">' + (c.suggestedRule || '—') + '</div>' +
+        '<div class="cn-card__meta t-body-sm muted">' +
+          (c.triggeredBy ? 'Triggered by ' + c.triggeredBy + ' · ' : '') +
+          (c.patternCount ? c.patternCount + ' patrones · ' : '') +
+          (c.triggeredAt ? c.triggeredAt.slice(0, 10) : '') +
+        '</div>' +
+        (c.status === 'candidate'
+          ? '<button class="btn btn-sm btn-primary" data-act="review" data-id="' + c.id + '">' + i18n.t('consolidation.approve') + ' →</button>'
+          : c.status === 'active'
+          /* [V3-PATCH 2026-04-19] Active → Promote to base loop visible */
+          ? '<button class="btn btn-sm btn-primary" data-act="promote-base" data-id="' + c.id + '">↑ Promover a base</button>' +
+            ' <button class="btn btn-sm btn-ghost" data-act="archive" data-id="' + c.id + '">Archivar</button>'
+          : c.status === 'archived'
+          ? '<button class="btn btn-sm" disabled>Archived</button>'
+          : '<button class="btn btn-sm" disabled>Reverted</button>') +
+      '</article>'
+    );
+  }
+
+  /* [V3-PATCH 2026-04-19] Promote Active consolidation to skill base */
+  function promoteToBase(consId) {
+    const c = FL.mock.consolidations.find(x => x.id === consId);
+    if (!c) return;
+    const skill = FL.mock.skills[c.skillId];
+    if (!skill) return;
+    const newVersion = bumpVersion(skill.base.version || '1.0.0');
+    W.openModal(
+      '<h2 id="fl-modal-title" class="t-heading-lg" style="margin:0 0 var(--space-3);">↑ Promover a base sellada</h2>' +
+      '<p class="t-body-md">Vas a integrar el patrón consolidado al base layer del skill <code>' + c.skillId + '</code>.</p>' +
+      '<dl class="bd-risk-grid" style="margin:var(--space-3) 0;">' +
+        '<dt>Skill</dt><dd><strong>' + skill.name + '</strong></dd>' +
+        '<dt>Base actual</dt><dd>v' + skill.base.version + '</dd>' +
+        '<dt>Nueva versión</dt><dd><strong style="color:var(--accent-primary);">v' + newVersion + '</strong></dd>' +
+        '<dt>Patrón</dt><dd>' + (c.suggestedRule || '—') + '</dd>' +
+        '<dt>Audit verb</dt><dd><code>agent_spec.published</code></dd>' +
+        '<dt>supersedes</dt><dd>v' + skill.base.version + ' (queda como superseded, no se borra)</dd>' +
+      '</dl>' +
+      '<p class="t-body-sm muted">Per A5 §7: "no borrar chunks promovidos, versionarlos". El base anterior queda con status superseded.</p>' +
+      '<div style="display:flex;gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-4);">' +
+        '<button class="btn" data-promo-act="cancel">Cancelar</button>' +
+        '<button class="btn btn-primary" data-promo-act="confirm">Confirmar promoción</button>' +
+      '</div>',
+      { width: 600 }
+    );
+    document.querySelector('[data-promo-act="cancel"]').addEventListener('click', () => W.closeModal());
+    document.querySelector('[data-promo-act="confirm"]').addEventListener('click', () => {
+      /* simulate the loop closing: skill.base version bump + consolidation archived */
+      skill.base.version = newVersion;
+      c.status = 'archived';
+      c.promotedAt = new Date().toISOString();
+      c.supersedesVersion = skill.base.version;
+      FL.mock.auditEvents.unshift({
+        id:'ae_' + Date.now(), ts:new Date().toISOString(), tenantId:FL.session.tenantId,
+        actor:FL.session.userId, action:'agent_spec.published', target:c.skillId,
+        severity:'INFO', ip:'10.0.0.1', userAgent:'FaberLoom/1.0',
+        beforeState:JSON.stringify({ version: skill.base.version, source:'consolidation' }),
+        afterState:JSON.stringify({ version: newVersion, supersedes: skill.base.version, includes_pattern: c.suggestedRule })
+      });
+      W.closeModal();
+      FL.bus.emit('toast', { kind:'success', message:'✓ Promovido a base · ' + skill.name + ' ahora v' + newVersion + ' · audit_event publicado' });
+      render();
+    });
+  }
+  function bumpVersion(v) {
+    const parts = v.split('.');
+    parts[parts.length - 1] = String(parseInt(parts[parts.length - 1] || '0', 10) + 1);
+    return parts.join('.');
+  }
+  function archiveConsolidation(consId) {
+    const c = FL.mock.consolidations.find(x => x.id === consId);
+    if (!c) return;
+    c.status = 'archived';
+    c.archivedAt = new Date().toISOString();
+    FL.bus.emit('toast', { kind:'info', message:'Archivado · disponible para rollback en histórico' });
+    render();
+  }
+
+  function injectStyles() {
+    if (document.getElementById('cn-styles')) return;
+    const s = document.createElement('style'); s.id = 'cn-styles';
+    s.textContent = `
+.cn-wrap { display:flex; flex-direction:column; gap:var(--space-4); }
+.cn-wrap h1 { margin:0; }
+.cn-kanban { display:grid; grid-template-columns:repeat(4, 1fr); gap:var(--space-3); align-items:flex-start; }
+@media (max-width: 980px) { .cn-kanban { grid-template-columns:1fr 1fr; } }
+@media (max-width: 680px) { .cn-kanban { grid-template-columns:1fr; } }
+.cn-col { background:var(--bg-subtle); border-radius:var(--radius-lg); padding:var(--space-3); min-height:180px; }
+.cn-col__head { display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--space-2); }
+.cn-col__head h2 { margin:0; }
+.cn-col__body { display:flex; flex-direction:column; gap:var(--space-2); }
+.cn-card { background:var(--bg-surface); padding:var(--space-3); border-radius:var(--radius-md); border:1px solid var(--stroke-default); display:flex; flex-direction:column; gap:var(--space-1); }
+.cn-card__head { font-size:13px; }
+.cn-card__rule { color:var(--text-primary); }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules['consolidation'] = { mount, meta: { route: '/consolidaciones' } };
+})();
+</script>

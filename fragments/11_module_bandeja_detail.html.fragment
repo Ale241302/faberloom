@@ -1,0 +1,600 @@
+<script>
+(function () {
+  const FL = window.__faberloom;
+  if (!FL) return;
+  const W = FL.widgets, i18n = FL.i18n, bus = FL.bus;
+
+  const MODULE_ID = 'bandeja-detail';
+  let root = null;
+  let unsubs = [];
+
+  function mount(slot, ctx) {
+    root = slot;
+    injectStyles();
+    const id = ctx.params.id || 'dr_001';
+    /* [V3-PATCH 2026-04-19] polymorphic dispatch: draft or inbox item */
+    const inbox = (FL.mock.inboxItems || []).find(i => i.id === id);
+    if (inbox) {
+      renderInboxItem(inbox);
+      return { unmount };
+    }
+    const draft = FL.mock.drafts.find(d => d.id === id) || FL.mock.drafts[0];
+    const agent = FL.mock.agents.find(a => a.id === draft.agentId) || { name: '—' };
+    const action = FL.mock.actions.find(a => a.actionId === (draft.action && draft.action.actionId)) || draft.action || {};
+    render(draft, agent, action);
+    return { unmount };
+  }
+
+  /* [V3-PATCH 2026-04-19] Approval chain visualization (multi-actor) */
+  function renderApprovalChain(draft) {
+    const chain = (FL.mock.approvalChains || []).find(c => c.draftId === draft.id);
+    if (!chain) return '';
+    return (
+      '<section class="bd-panel card" style="border-left:3px solid var(--brand-coral);">' +
+      '<h3 class="t-heading-md">⚏ Approval chain (multi-actor)</h3>' +
+      '<ol class="bd-chain">' + chain.steps.map(s => (
+        '<li class="bd-chain-step bd-chain-step--' + s.state + '">' +
+        '<span class="bd-chain-dot">' + (s.state === 'approved' ? '✓' : s.state === 'pending' ? '⏳' : '◯') + '</span>' +
+        ' Paso ' + s.stepIdx + ': <strong>' + s.requiredRole + '</strong>' +
+        (s.requiredUserId ? ' (<code>' + s.requiredUserId + '</code>)' : '') +
+        ' · <span class="muted">' + s.state + '</span>' +
+        (s.dueAt ? ' · due ' + s.dueAt.slice(11, 16) : '') +
+        (s.approvedAt ? ' · ✓ ' + s.approvedAt.slice(11, 16) : '') +
+        '</li>'
+      )).join('') + '</ol>' +
+      '<p class="muted t-body-sm" style="margin-top:var(--space-2);"><em>Razón: ' + chain.reason + '</em></p>' +
+      '</section>'
+    );
+  }
+
+  /* [V3-PATCH 2026-04-19] Action bundle preview (multi-output) */
+  function renderActionBundle(draft) {
+    const bundle = (FL.mock.actionBundles || []).find(b => b.draftId === draft.id);
+    if (!bundle) return '';
+    const irrev = String(bundle.aggregateRisk.reversibility || '').startsWith('irreversible');
+    return (
+      '<section class="bd-panel card" style="border-left:3px solid ' + (irrev ? 'var(--risk-irreversible)' : 'var(--risk-low)') + ';">' +
+      '<h3 class="t-heading-md">📦 Action bundle · 1 aprobación → ' + bundle.actions.length + ' acciones atómicas</h3>' +
+      '<div class="muted t-body-sm" style="margin-bottom:var(--space-3);">Riesgo agregado: <strong>' + bundle.aggregateRisk.reversibility + '</strong> · efectos: ' + bundle.aggregateRisk.side_effects.join(', ') + '</div>' +
+      '<ol class="bd-bundle">' + bundle.actions.map((a, i) => (
+        '<li class="bd-bundle-step">' +
+        '<span class="bd-bundle-num">' + (i + 1) + '</span>' +
+        '<div class="bd-bundle-body">' +
+          '<div class="t-body-md"><code>' + a.actionId + '</code></div>' +
+          '<div class="t-body-sm muted">' + a.description + ' · target: <code>' + a.target + '</code></div>' +
+        '</div></li>'
+      )).join('') + '</ol>' +
+      (irrev ? '<p class="t-body-sm" style="color:var(--risk-irreversible);margin-top:var(--space-2);">⚠ Bundle con acción irreversible. Aprobación requiere doble confirmación.</p>' : '') +
+      '</section>'
+    );
+  }
+
+  /* [V3-PATCH 2026-04-19] Comments thread per draft */
+  function renderComments(draft) {
+    const cs = (FL.mock.comments || []).filter(c => c.parentItemId === draft.id);
+    return (
+      '<section class="bd-panel card">' +
+      '<h3 class="t-heading-md">💬 Comments · ' + cs.length + '</h3>' +
+      (cs.length
+        ? '<ul class="bd-comments">' + cs.map(c => {
+            const u = (FL.mock.users || []).find(x => x.id === c.authorUserId) || { name:'?' };
+            return '<li class="bd-comment"><div class="bd-comment-head"><strong>' + u.name + '</strong> <span class="muted t-body-sm">· ' + c.createdAt.slice(11, 16) + '</span></div><div class="bd-comment-body">' + c.body + '</div></li>';
+          }).join('') + '</ul>'
+        : '<p class="muted t-body-sm">Sin comentarios. Sé el primero.</p>') +
+      '<form class="bd-comment-add" data-bd-comment-add>' +
+        '<input class="input" placeholder="Agregá un comentario… (@mention soportado)" />' +
+        '<button class="btn btn-sm btn-primary" type="submit">Comentar</button>' +
+      '</form>' +
+      '</section>'
+    );
+  }
+
+  /* [V3-PATCH 2026-04-19] Inbox-item renderer for non-draft kinds */
+  function renderInboxItem(item) {
+    const t = k => i18n.t(k);
+    const KIND_CFG = {
+      inbound_email:    { icon:'✉',  color:'var(--brand-sky)',       labelKey:'bandeja.kind.inbound_email' },
+      inbound_msg:      { icon:'💬', color:'var(--brand-lilac)',     labelKey:'bandeja.kind.inbound_msg' },
+      crm_event:        { icon:'⚲',  color:'var(--brand-amber)',     labelKey:'bandeja.kind.crm_event' },
+      alert:            { icon:'⚠',  color:'var(--status-warning)',  labelKey:'bandeja.kind.alert' },
+      approval_request: { icon:'⚏',  color:'var(--brand-coral)',     labelKey:'bandeja.kind.approval_request' },
+      escalation:       { icon:'↑',  color:'var(--brand-evidence)',  labelKey:'bandeja.kind.escalation' },
+      feedback_reply:   { icon:'⤷',  color:'var(--brand-sage)',       labelKey:'bandeja.kind.feedback_reply' },
+      sla_timer:        { icon:'⌚', color:'var(--status-warning)',  labelKey:'bandeja.kind.sla_timer' },
+      webhook:          { icon:'⚡', color:'var(--brand-mist)',       labelKey:'bandeja.kind.webhook' },
+      audit_alert:      { icon:'🔒', color:'var(--brand-evidence)',  labelKey:'bandeja.kind.audit_alert' },
+      task:             { icon:'☐',  color:'var(--brand-sage)',       labelKey:'bandeja.kind.task' }
+    };
+    const cfg = KIND_CFG[item.kind] || { icon:'•', color:'var(--text-muted)', labelKey:'common.view' };
+    const attachments = (FL.mock.attachments || []).filter(a => a.parentItemId === item.id);
+    const actions = inboxItemActions(item);
+    const meta = renderInboxMeta(item);
+
+    root.innerHTML =
+      '<div class="bd-wrap">' +
+      '<header class="bd-head">' +
+        '<nav class="bd-crumbs"><a href="#/bandeja">' + t('bandeja.title') + '</a><span aria-hidden="true">/</span>' +
+        '<code>' + item.id + '</code></nav>' +
+        '<div class="bd-meta">' +
+          '<span class="chip" style="background:transparent;border-color:' + cfg.color + ';color:' + cfg.color + ';">' + cfg.icon + ' ' + t(cfg.labelKey) + '</span> ' +
+          '<span class="chip">' + (i18n.t('states.' + item.state, item.state) || '—') + '</span> ' +
+          (item.priority ? '<span class="chip chip-' + (item.priority === 'high' ? 'danger' : item.priority === 'normal' ? 'info' : '') + '">' + item.priority + '</span>' : '') +
+        '</div>' +
+      '</header>' +
+      '<section class="bd-envelope card" style="border-left:3px solid ' + cfg.color + ';">' +
+        '<div class="bd-env-row"><span class="t-label-sm">Origen</span><span><strong>' + (item.from && item.from.name || '—') + '</strong>' + (item.from && item.from.email ? ' &lt;' + item.from.email + '&gt;' : '') + (item.from && item.from.channel ? ' · <span class="chip">' + item.from.channel + '</span>' : '') + '</span></div>' +
+        '<h2 class="bd-subject t-display-sm">' + item.subject + '</h2>' +
+        '<p class="bd-body t-body-md" style="margin-top:var(--space-3);">' + (item.preview || '—') + '</p>' +
+        (attachments.length ? '<div class="bd-att">' +
+          '<div class="t-label-sm muted">Adjuntos · ' + attachments.length + '</div>' +
+          attachments.map(a => '<div class="bd-att-row"><span aria-hidden="true">📎</span> <code>' + a.filename + '</code> <span class="muted">' + a.sizeKB + ' KB · ' + a.kind + '</span></div>').join('') +
+        '</div>' : '') +
+      '</section>' +
+      meta +
+      '<footer class="bd-actions">' + actions + '</footer>' +
+      '</div>';
+
+    /* wire actions */
+    root.querySelectorAll('[data-iact]').forEach(b => {
+      b.addEventListener('click', () => handleInboxAction(b.getAttribute('data-iact'), item));
+    });
+  }
+
+  function renderInboxMeta(item) {
+    if (item.kind === 'sla_timer' && item.metadata) {
+      return '<section class="bd-panel card"><h3 class="t-heading-md">SLA detail</h3>' +
+        '<dl class="bd-risk-grid">' +
+        '<dt>draft target</dt><dd><a href="#/bandeja/' + item.metadata.draftId + '">' + item.metadata.draftId + '</a></dd>' +
+        '<dt>hours left</dt><dd><strong style="color:var(--status-warning);">' + item.metadata.hoursLeft + 'h</strong></dd>' +
+        '<dt>due at</dt><dd class="mono">' + (item.dueAt || '—') + '</dd>' +
+        '</dl></section>';
+    }
+    if (item.kind === 'approval_request' && item.metadata) {
+      const chain = (FL.mock.approvalChains || []).find(c => c.draftId === item.metadata.parentDraftId);
+      return '<section class="bd-panel card"><h3 class="t-heading-md">Approval chain</h3>' +
+        (chain ? '<ol class="bd-chain">' + chain.steps.map(s => (
+          '<li class="bd-chain-step bd-chain-step--' + s.state + '"><span class="bd-chain-dot">' + (s.state === 'approved' ? '✓' : s.state === 'pending' ? '⏳' : '◯') + '</span>' +
+          ' Paso ' + s.stepIdx + ': <strong>' + s.requiredRole + '</strong>' +
+          (s.requiredUserId ? ' (<code>' + s.requiredUserId + '</code>)' : '') +
+          ' · <span class="muted">' + s.state + '</span>' +
+          (s.dueAt ? ' · due ' + s.dueAt.slice(11,16) : '') +
+          '</li>'
+        )).join('') + '</ol>' +
+        '<p class="muted t-body-sm" style="margin-top:var(--space-2);"><em>' + chain.reason + '</em></p>'
+        : '<p class="muted">Cadena de aprobación no encontrada.</p>') +
+        '</section>';
+    }
+    if (item.kind === 'crm_event' && item.metadata) {
+      return '<section class="bd-panel card"><h3 class="t-heading-md">CRM event</h3>' +
+        '<dl class="bd-risk-grid">' +
+        Object.keys(item.metadata).map(k => '<dt>' + k + '</dt><dd><code>' + item.metadata[k] + '</code></dd>').join('') +
+        '</dl></section>';
+    }
+    if (item.kind === 'webhook' && item.metadata) {
+      return '<section class="bd-panel card"><h3 class="t-heading-md">Webhook payload</h3>' +
+        '<pre class="bd-trace" style="background:var(--bg-sunken);padding:var(--space-3);border-radius:var(--radius-sm);font-family:var(--font-mono);font-size:12px;overflow:auto;">' + JSON.stringify(item.metadata, null, 2) + '</pre>' +
+        '</section>';
+    }
+    if (item.kind === 'task' && item.metadata) {
+      return '<section class="bd-panel card"><h3 class="t-heading-md">Task detail</h3>' +
+        '<dl class="bd-risk-grid">' +
+        '<dt>asignado a</dt><dd><code>' + (item.assignedTo || '—') + '</code></dd>' +
+        '<dt>due</dt><dd class="mono">' + (item.dueAt || '—') + '</dd>' +
+        Object.keys(item.metadata).map(k => '<dt>' + k + '</dt><dd><code>' + item.metadata[k] + '</code></dd>').join('') +
+        '</dl></section>';
+    }
+    if (item.kind === 'audit_alert' && item.metadata) {
+      return '<section class="bd-panel card" style="border-left:3px solid var(--brand-evidence);"><h3 class="t-heading-md">Audit alert</h3>' +
+        '<dl class="bd-risk-grid">' +
+        Object.keys(item.metadata).map(k => '<dt>' + k + '</dt><dd><code>' + item.metadata[k] + '</code></dd>').join('') +
+        '</dl></section>';
+    }
+    return '';
+  }
+
+  function inboxItemActions(item) {
+    const t = k => i18n.t(k);
+    if (item.kind === 'inbound_email' || item.kind === 'inbound_msg') {
+      const sa = item.suggestedAgent ? '<button class="btn btn-primary" data-iact="assign-suggested">→ Asignar a ' + (FL.mock.agents.find(a => a.id === item.suggestedAgent) || {}).name + '</button>' : '';
+      return sa + '<button class="btn" data-iact="reply-myself">✎ Responder yo</button>' +
+        '<button class="btn" data-iact="snooze">⌚ Snooze 4h</button>' +
+        '<button class="btn btn-ghost" data-iact="archive">Archivar</button>';
+    }
+    if (item.kind === 'approval_request') {
+      return '<button class="btn btn-primary" data-iact="approve">✓ Aprobar</button>' +
+        '<button class="btn" data-iact="reject">✕ Rechazar</button>' +
+        '<button class="btn" data-iact="open-parent">→ Ver draft padre</button>';
+    }
+    if (item.kind === 'sla_timer') {
+      return '<button class="btn btn-primary" data-iact="open-target">→ Ir al draft</button>' +
+        '<button class="btn" data-iact="snooze">⌚ Snooze 1h</button>';
+    }
+    if (item.kind === 'task') {
+      return '<button class="btn btn-primary" data-iact="complete-task">✓ Marcar completa</button>' +
+        '<button class="btn" data-iact="reassign">→ Reasignar</button>';
+    }
+    if (item.kind === 'escalation') {
+      return '<button class="btn btn-primary" data-iact="resolve-escalation">Resolver yo</button>' +
+        '<button class="btn" data-iact="reassign">→ Reasignar</button>';
+    }
+    if (item.kind === 'alert' || item.kind === 'crm_event' || item.kind === 'webhook' || item.kind === 'audit_alert' || item.kind === 'feedback_reply') {
+      return '<button class="btn" data-iact="ack">✓ Acknowledge</button>' +
+        '<button class="btn btn-ghost" data-iact="archive">Archivar</button>';
+    }
+    return '<button class="btn" data-iact="ack">✓ Acknowledge</button>';
+  }
+
+  function handleInboxAction(action, item) {
+    switch (action) {
+      case 'assign-suggested':
+        FL.bus.emit('toast', { kind:'success', message:'Asignado a ' + item.suggestedAgent + ' · agente generará draft' });
+        location.hash = '#/chat/new?agent=' + item.suggestedAgent;
+        break;
+      case 'reply-myself':
+        FL.bus.emit('toast', { kind:'info', message:'Editor inline · pendiente' });
+        break;
+      case 'snooze':
+        FL.bus.emit('toast', { kind:'info', message:'Snoozed · vuelve a aparecer en 1-4h' });
+        location.hash = '#/bandeja';
+        break;
+      case 'archive':
+        FL.bus.emit('toast', { kind:'success', message:'Archivado · audit_event registrado' });
+        location.hash = '#/bandeja';
+        break;
+      case 'approve':
+        FL.bus.emit('toast', { kind:'success', message:'Aprobado · approval chain avanza al siguiente paso' });
+        location.hash = '#/bandeja';
+        break;
+      case 'reject':
+        FL.bus.emit('toast', { kind:'warn', message:'Rechazado · originador notificado' });
+        location.hash = '#/bandeja';
+        break;
+      case 'open-parent':
+        if (item.metadata && item.metadata.parentDraftId) location.hash = '#/bandeja/' + item.metadata.parentDraftId;
+        break;
+      case 'open-target':
+        if (item.metadata && item.metadata.draftId) location.hash = '#/bandeja/' + item.metadata.draftId;
+        break;
+      case 'complete-task':
+        FL.bus.emit('toast', { kind:'success', message:'Tarea marcada completa' });
+        location.hash = '#/bandeja';
+        break;
+      case 'reassign':
+        FL.bus.emit('toast', { kind:'info', message:'Reasignar · UI pendiente' });
+        break;
+      case 'resolve-escalation':
+        FL.bus.emit('toast', { kind:'success', message:'Escalación resuelta · agente notificado' });
+        location.hash = '#/bandeja';
+        break;
+      case 'ack':
+        FL.bus.emit('toast', { kind:'success', message:'Acknowledged · audit_event registrado' });
+        break;
+    }
+  }
+  function unmount() {
+    unsubs.forEach(u => typeof u === 'function' && u());
+    unsubs = [];
+    if (root) root.innerHTML = '';
+  }
+
+  function claimBody(draft) {
+    if (!draft.body) return '';
+    let html = draft.body.replace(/\n/g, '<br>');
+    (draft.claims || []).forEach((c, i) => {
+      const label = 'E' + (i + 1);
+      const marker = '[' + c.id + ']';
+      const firstEv = (c.evidence || [])[0] || { id: 'e0' };
+      const replacement = '<mark class="bd-claim" data-claim="' + c.id + '" data-evidence="' + firstEv.id + '">' + c.text + '</mark>' +
+        W.provenanceSup(c.id, firstEv.id, label);
+      html = html.replace(marker, replacement);
+    });
+    return html;
+  }
+
+  function renderEvidenceTab(draft) {
+    if (!(draft.claims || []).length) return W.emptyState({ title: i18n.t('common.empty'), subtitle: 'Sin evidencia en este draft', icon: '○' });
+    return '<ol class="bd-evlist">' + draft.claims.map((c, i) => (
+      '<li class="bd-ev" data-claim="' + c.id + '">' +
+        '<div class="bd-ev__head"><span class="bd-ev__badge">E' + (i + 1) + '</span>' +
+        '<code>' + c.id + '</code></div>' +
+        '<div class="bd-ev__claim">' + c.text + '</div>' +
+        '<div class="bd-ev__spans">' +
+        (c.evidence || []).map(e => (
+          '<div class="bd-ev__span">' +
+            '<div><span class="t-label-sm muted">source</span> <code>' + e.source + '</code></div>' +
+            '<div><span class="t-label-sm muted">source_version</span> <code>' + (e.sourceVersion || '—') + '</code></div>' +
+            '<div><span class="t-label-sm muted">line</span> <code>' + (e.line || '—') + '</code></div>' +
+            '<div><span class="t-label-sm muted">retrieval_run_id</span> <code>' + (e.retrievalRunId || '—') + '</code></div>' +
+          '</div>'
+        )).join('') +
+        '</div></li>'
+    )).join('') + '</ol>';
+  }
+
+  function renderRiskTab(draft, action) {
+    const a = action || {};
+    const rows = [
+      ['action_id',      '<code>' + (a.actionId || draft.action && draft.action.actionId || '—') + '</code>'],
+      ['reversibility',  W.riskBadge({ reversibility: a.reversibility || 'reversible_24h' })],
+      ['side_effects',   (a.side_effects || draft.action && draft.action.side_effects || []).map(s => '<span class="chip">' + s + '</span>').join(' ') || '<span class="muted">—</span>'],
+      ['min_autonomy',   '<span class="chip chip-info">' + (a.min_autonomy || 'L1') + '</span>'],
+      ['required_role',  '<span class="chip chip-accent">' + (a.required_role || 'operator') + '</span>'],
+      ['audit_class',    '<span class="chip">' + (a.audit_class || 'operational') + '</span>']
+    ];
+    const table = '<dl class="bd-risk-grid">' + rows.map(([k, v]) => '<dt class="t-label-sm">' + k + '</dt><dd>' + v + '</dd>').join('') + '</dl>';
+    const fp = draft.modelFingerprint ? (
+      '<section class="bd-fp">' +
+        '<h4 class="t-label-md" style="margin:0 0 var(--space-2) 0;">' + i18n.t('bandeja.fingerprint', 'Model fingerprint') + '</h4>' +
+        '<dl class="bd-risk-grid">' +
+          '<dt>provider</dt><dd><code>' + draft.modelFingerprint.provider + '</code></dd>' +
+          '<dt>model_family</dt><dd><code>' + draft.modelFingerprint.model_family + '</code></dd>' +
+          '<dt>model_version</dt><dd><code>' + draft.modelFingerprint.model_version + '</code></dd>' +
+          '<dt>system_prompt_hash</dt><dd><code>' + draft.modelFingerprint.system_prompt_hash + '</code></dd>' +
+          '<dt>tools_manifest_hash</dt><dd><code>' + draft.modelFingerprint.tools_manifest_hash + '</code></dd>' +
+          '<dt>policy_version</dt><dd><code>' + draft.modelFingerprint.policy_version + '</code></dd>' +
+          '<dt>retrieval_index_version</dt><dd><code>' + draft.modelFingerprint.retrieval_index_version + '</code></dd>' +
+        '</dl>' +
+      '</section>'
+    ) : '';
+    return table + fp;
+  }
+
+  function renderTraceTab(draft) {
+    const entries = (draft.workflowTrace || []).map(s => ({
+      ts: s.ts || '—',
+      actor: s.actor || '—',
+      action: s.node,
+      detail: 'step ' + s.step + ' · ' + s.status,
+      status: s.status
+    }));
+    if (!entries.length) return W.emptyState({ title: 'Sin trace', icon: '○' });
+    return W.timeline(entries);
+  }
+
+  function render(draft, agent, action) {
+    const t = k => i18n.t(k);
+    const isIrreversible = (draft.action && (draft.action.reversibility || '').startsWith('irreversible'));
+    const approveLabel = t('bandeja.detail.actions.approve', 'Aprobar') + (isIrreversible ? ' ⚠' : '');
+    const tabs = W.tabs([
+      { id: 'content',  label: t('bandeja.tab_content',  'Contenido'), panel: '<div class="bd-body t-body-lg">' + claimBody(draft) + '</div>' },
+      { id: 'evidence', label: t('bandeja.tab_evidence', 'Evidencia'), panel: renderEvidenceTab(draft) },
+      { id: 'risk',     label: t('bandeja.tab_risk',     'Riesgo'),    panel: renderRiskTab(draft, action) },
+      { id: 'trace',    label: t('bandeja.tab_trace',    'Trace'),     panel: renderTraceTab(draft) }
+    ], { active: 'content' });
+
+    /* [V2-PATCH 2026-04-19] Top-3 grounded-in sources for this draft */
+    const topSources = (draft.claims || []).flatMap(c =>
+      (c.evidence || []).map(ev => ({
+        sourceId:  ev.source,
+        title:     ev.source,
+        version:   ev.sourceVersion,
+        lineRange: ev.line,
+        score:     ev.retrievalRunId ? 0.95 : 0.8
+      }))
+    ).slice(0, 3);
+
+    root.innerHTML =
+      '<div class="bd-wrap">' +
+      '<header class="bd-head">' +
+        '<nav class="bd-crumbs"><a href="#/bandeja">' + t('bandeja.title') + '</a><span aria-hidden="true">/</span>' +
+        '<code>' + draft.id + '</code></nav>' +
+        '<div class="bd-meta">' +
+          '<span class="chip" title="Agent">' + agent.name + '</span> ' +
+          W.draftStateBadge(draft.state || 'awaiting_approval') + ' ' +
+          (draft.action ? W.riskBadge(draft.action) : '') +
+          (draft.businessEntityId ? ' <span class="chip">' + draft.businessEntityId + '</span>' : '') +
+        '</div>' +
+      '</header>' +
+      '<section class="bd-envelope card">' +
+        (draft.recipient ? '<div class="bd-env-row"><span class="t-label-sm">' + t('bandeja.recipient') + '</span><span>' + draft.recipient.name + ' &lt;' + (draft.recipient.email || '—') + '&gt;</span></div>' : '') +
+        '<h2 class="bd-subject t-display-sm">' + (draft.subject || '—') + '</h2>' +
+      '</section>' +
+      /* [V2-PATCH 2026-04-19] GroundedInBlock compacto (top-3) con link a tab Evidencia */
+      '<section class="bd-grounded card">' +
+        W.groundedInBlock({ sources: topSources, title: i18n.t('chat.grounded_in_title', 'Grounded in') + ' · top 3' }) +
+        '<button class="btn btn-sm btn-ghost" data-jump-evidence style="margin-top:var(--space-2);">' + t('common.view') + ' ' + t('bandeja.tab_evidence') + ' →</button>' +
+      '</section>' +
+      '<section class="bd-panel card">' + tabs + '</section>' +
+      /* [V3-PATCH 2026-04-19] AI assist + chat thread embed slots + chain/bundle/comments */
+      renderApprovalChain(draft) +
+      renderActionBundle(draft) +
+      renderComments(draft) +
+      '<div id="bd-edit-slot"></div>' +
+      '<div id="bd-thread-slot"></div>' +
+      '<footer class="bd-actions">' +
+        '<button class="btn btn-primary" data-act="approve"><span aria-hidden="true">✓</span> ' + approveLabel + '</button>' +
+        '<button class="btn" data-act="edit">✎ ' + t('common.edit') + '</button>' +
+        '<button class="btn" data-act="reject">' + t('common.reject') + '</button>' +
+        '<button class="btn" data-act="handoff">→ Handoff</button>' +
+        '<button class="btn" data-act="thread">💬 Thread agente</button>' +
+        '<button class="btn" data-act="feedback">' + t('common.feedback') + '</button>' +
+        '<button class="btn btn-ghost" data-act="consolidate" style="margin-left:auto;">' + t('skill.consolidate') + '</button>' +
+      '</footer>' +
+      '</div>';
+
+    W.wireTabs(root.querySelector('[data-widget="tabs"]'));
+
+    /* [V2-PATCH 2026-04-19] wire "Ver Evidencia" jump button */
+    const jumpBtn = root.querySelector('[data-jump-evidence]');
+    if (jumpBtn) jumpBtn.addEventListener('click', () => {
+      const evTab = root.querySelector('.fl-tab[data-tab="evidence"]');
+      if (evTab) { evTab.click(); root.querySelector('[data-widget="tabs"]').scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    });
+
+    /* Provenance superscript ↔ claim ↔ evidence cross-highlight */
+    root.querySelectorAll('.fl-prov-sup').forEach(sup => {
+      const cid = sup.getAttribute('data-claim');
+      const activate = () => {
+        root.querySelectorAll('.bd-claim').forEach(m => m.classList.toggle('highlighted', m.getAttribute('data-claim') === cid));
+        root.querySelectorAll('.bd-ev').forEach(li => li.classList.toggle('highlighted', li.getAttribute('data-claim') === cid));
+        // switch to evidence tab
+        const evBtn = root.querySelector('.fl-tab[data-tab="evidence"]');
+        if (evBtn) evBtn.click();
+      };
+      sup.addEventListener('mouseenter', activate);
+      sup.addEventListener('click', activate);
+      sup.addEventListener('focus', activate);
+    });
+
+    /* Actions */
+    const ap = root.querySelector('[data-act="approve"]');
+    if (ap) ap.addEventListener('click', () => {
+      if (isIrreversible) {
+        if (!confirm(i18n.t('bandeja.confirm_approve_irreversible', 'Acción irreversible. ¿Confirmás?'))) return;
+      }
+      bus.emit('draft:approve', { id: draft.id });
+      bus.emit('toast', { kind: 'success', message: i18n.t('bandeja.approve_done', 'Draft aprobado') });
+    });
+    const rj = root.querySelector('[data-act="reject"]');
+    if (rj) rj.addEventListener('click', () => W.openFeedbackModal(draft.id));
+    /* [V3-PATCH 2026-04-19] wire comment add form */
+    const cf = root.querySelector('[data-bd-comment-add]');
+    if (cf) cf.addEventListener('submit', e => {
+      e.preventDefault();
+      const inp = cf.querySelector('input');
+      if (!inp || !inp.value.trim()) return;
+      FL.mock.comments.unshift({ id:'cm_live_' + Date.now(), parentItemId: draft.id, authorUserId: FL.session.userId, body: inp.value.trim(), createdAt: new Date().toISOString() });
+      inp.value = '';
+      bus.emit('toast', { kind:'success', message:'Comentario agregado · audit_event registrado' });
+      mount(root, { params:{ id:draft.id } });
+    });
+
+    /* [V3-PATCH 2026-04-19] Edit → AI assist toolbar embedded inline */
+    const ed = root.querySelector('[data-act="edit"]');
+    if (ed) ed.addEventListener('click', () => {
+      const slot = document.getElementById('bd-edit-slot');
+      if (!slot) return;
+      if (slot.innerHTML) { slot.innerHTML = ''; return; }
+      slot.innerHTML = W.aiAssistToolbar({ draftId: draft.id });
+      W.wireAiAssistToolbar(slot.querySelector('.fl-aia'), {
+        onPreset: action => {
+          const proposals = {
+            rephrase:   'Reformulación propuesta:\n\n"' + (draft.subject || 'asunto') + '" — versión más natural sin cambiar contenido.',
+            shorten:    'Versión acortada (-30%): mantiene los 6 claims pero elimina párrafos de cortesía.',
+            formalize:  'Tono formal · "Estimado/a" · cierre con "Quedo a su disposición".',
+            translate:  'Traducción PT-BR del cuerpo (preserva claims [E1]..[E6]).',
+            factcheck:  '✓ 5/6 claims con evidencia vigente. ⚠ [E3] referencia a policy_playbook v1.2.0 — chequear si v1.3.0 ya disponible.',
+            compliance: '✓ POL_MX_001: 3/4 checks pasan (ver C16 análisis). Pendiente: factura post-approval (esperable).'
+          };
+          return proposals[action] || '(simulación) propuesta para "' + action + '"';
+        },
+        onOpenChat: () => {
+          slot.innerHTML = W.aiAssistChat({ contextLabel: 'Draft ' + draft.id });
+          W.wireAiAssistChat(slot.querySelector('.fl-aiac'), {
+            onPrompt: text => '(simulación) procesando: "' + text + '" — respuesta del agente con propuesta de cambio embebida.',
+            onClose: () => { slot.innerHTML = ''; }
+          });
+        }
+      });
+    });
+
+    /* [V3-PATCH 2026-04-19] Thread agente: embed chat thread primitive */
+    const thr = root.querySelector('[data-act="thread"]');
+    if (thr) thr.addEventListener('click', () => {
+      const slot = document.getElementById('bd-thread-slot');
+      if (!slot) return;
+      if (slot.innerHTML) { slot.innerHTML = ''; return; }
+      const conv = (FL.mock.conversations || []).find(c => c.agentId === draft.agentId) || { id: 'cv_' + draft.id };
+      slot.innerHTML = W.chatThread({ conversationId: conv.id, contextLabel: 'Draft ' + draft.id + ' · agente ' + (agent.name || draft.agentId), scope: 'item' });
+      W.wireChatThread(slot.querySelector('.fl-cthread'), {
+        onSend: text => bus.emit('toast', { kind:'info', message:'Thread embed · mensaje enviado: "' + text.slice(0, 40) + '..."' })
+      });
+    });
+
+    /* [V3-PATCH 2026-04-19] Handoff packet modal (P10 8 fields) */
+    const ho = root.querySelector('[data-act="handoff"]');
+    if (ho) ho.addEventListener('click', () => {
+      const t = k => i18n.t(k);
+      W.openModal(
+        '<h2 id="fl-modal-title" class="t-heading-lg" style="margin:0 0 var(--space-3);">→ Handoff packet (P10)</h2>' +
+        '<form class="bd-ho-form">' +
+          '<label><span class="t-label-sm">to_agent</span><select class="select" name="to">' +
+            FL.mock.agents.filter(a => a.id !== draft.agentId).map(a => '<option value="' + a.id + '">' + a.name + '</option>').join('') +
+          '</select></label>' +
+          '<label><span class="t-label-sm">task</span><input class="input" name="task" value="Verificar cumplimiento POL_MX_001 sobre ' + draft.id + '"/></label>' +
+          '<label><span class="t-label-sm">goal</span><input class="input" name="goal" value="Confirmar fiscal + norma técnica antes de aprobación"/></label>' +
+          '<label><span class="t-label-sm">context</span><textarea class="textarea" name="context">' + (draft.subject || '') + ' · monto MXN 1.13M · ACME MX</textarea></label>' +
+          '<label><span class="t-label-sm">constraints</span><input class="input" name="constraints" value="Plazo respuesta &lt;24h"/></label>' +
+          '<label><span class="t-label-sm">deadline</span><input class="input" name="deadline" type="datetime-local" value="2026-04-19T13:00"/></label>' +
+          '<label><span class="t-label-sm">requested_output_format</span><select class="select" name="format"><option>compliance_check_report</option><option>risk_brief</option><option>diff_proposal</option></select></label>' +
+        '</form>' +
+        '<div style="display:flex;gap:var(--space-2);justify-content:flex-end;margin-top:var(--space-4);">' +
+          '<button class="btn" data-ho-act="cancel">Cancelar</button>' +
+          '<button class="btn btn-primary" data-ho-act="send">Enviar handoff</button>' +
+        '</div>',
+        { width: 560 }
+      );
+      document.querySelector('[data-ho-act="cancel"]').addEventListener('click', () => W.closeModal());
+      document.querySelector('[data-ho-act="send"]').addEventListener('click', () => {
+        bus.emit('toast', { kind:'success', message:'Handoff enviado · resultado volverá como nuevo item en bandeja' });
+        W.closeModal();
+      });
+    });
+    const fb = root.querySelector('[data-act="feedback"]');
+    if (fb) fb.addEventListener('click', () => W.openFeedbackModal(draft.id));
+    const cn = root.querySelector('[data-act="consolidate"]');
+    if (cn) cn.addEventListener('click', () => { location.hash = '#/skills/sk_cotizar'; });
+  }
+
+  function injectStyles() {
+    if (document.getElementById('bd-styles')) return;
+    const s = document.createElement('style');
+    s.id = 'bd-styles';
+    s.textContent = `
+.bd-wrap { max-width:1280px; margin:0 auto; display:flex; flex-direction:column; gap:var(--space-5); }
+.bd-head { display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:var(--space-3); }
+.bd-crumbs { display:flex; align-items:center; gap:var(--space-2); color:var(--text-muted); }
+.bd-crumbs a { color:var(--text-secondary); text-decoration:none; }
+.bd-crumbs a:hover { color:var(--accent-primary); text-decoration:underline; }
+.bd-meta { display:flex; align-items:center; gap:var(--space-2); flex-wrap:wrap; }
+.bd-envelope { padding:var(--space-5); display:flex; flex-direction:column; gap:var(--space-3); }
+.bd-env-row { display:grid; grid-template-columns:100px 1fr; align-items:baseline; gap:var(--space-3); }
+.bd-subject { margin:0; line-height:1.25; }
+.bd-panel { padding:var(--space-5); }
+.bd-body { line-height:1.75; }
+.bd-claim { background:transparent; color:var(--text-primary); border-bottom:1px dashed var(--text-evidence); padding:0; }
+.bd-claim.highlighted { background:var(--accent-primary-soft); }
+.bd-actions { display:flex; gap:var(--space-2); flex-wrap:wrap; }
+.bd-evlist { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:var(--space-3); }
+.bd-ev { padding:var(--space-3); border:1px solid var(--stroke-default); border-radius:var(--radius-md); background:var(--bg-surface); transition:border-color var(--dur-fast), background var(--dur-fast); }
+.bd-ev.highlighted { border-color:var(--accent-primary); background:var(--accent-primary-soft); }
+.bd-ev__head { display:flex; align-items:center; gap:var(--space-2); margin-bottom:var(--space-1); }
+.bd-ev__badge { display:inline-flex; align-items:center; justify-content:center; min-width:26px; height:20px; padding:0 6px; background:var(--text-evidence); color:#fff; border-radius:var(--radius-sm); font-family:var(--font-mono); font-size:11px; }
+.bd-ev__claim { font-style:italic; color:var(--text-secondary); margin-bottom:var(--space-2); }
+.bd-ev__spans { display:flex; flex-direction:column; gap:var(--space-2); }
+.bd-ev__span { display:grid; grid-template-columns:1fr 1fr; gap:var(--space-2) var(--space-4); padding:var(--space-2); background:var(--bg-subtle); border-radius:var(--radius-sm); font-size:12px; }
+.bd-ev__span code { background:transparent; padding:0; font-size:11.5px; color:var(--text-primary); }
+.bd-risk-grid { display:grid; grid-template-columns:auto 1fr; gap:var(--space-2) var(--space-4); margin:0; }
+.bd-risk-grid dt { color:var(--text-muted); font-size:11px; letter-spacing:0.04em; text-transform:uppercase; font-weight:600; padding-top:4px; }
+.bd-risk-grid dd { margin:0; }
+.bd-fp { margin-top:var(--space-4); padding-top:var(--space-4); border-top:1px dashed var(--stroke-default); }
+/* [V3-PATCH 2026-04-19] inbox item polymorphic styles */
+.bd-att { margin-top:var(--space-3); padding-top:var(--space-3); border-top:1px dashed var(--stroke-default); display:flex; flex-direction:column; gap:var(--space-1); }
+.bd-att-row { font-size:13px; padding:var(--space-1) 0; }
+.bd-chain { list-style:none; padding:0; margin:var(--space-2) 0; display:flex; flex-direction:column; gap:var(--space-2); }
+.bd-chain-step { display:flex; align-items:center; gap:var(--space-2); padding:var(--space-2); background:var(--bg-subtle); border-radius:var(--radius-sm); border-left:2px solid var(--stroke-default); }
+.bd-chain-step--approved { border-left-color:var(--status-success); }
+.bd-chain-step--pending { border-left-color:var(--status-warning); }
+.bd-chain-step--waiting_previous { opacity:0.55; }
+.bd-chain-dot { display:inline-flex; align-items:center; justify-content:center; width:20px; height:20px; border-radius:50%; background:var(--bg-surface); border:1px solid var(--stroke-default); font-size:10px; }
+/* [V3-PATCH] handoff form */
+.bd-ho-form { display:flex; flex-direction:column; gap:var(--space-2); }
+.bd-ho-form label { display:flex; flex-direction:column; gap:var(--space-1); }
+/* [V3-PATCH] action bundle + comments */
+.bd-bundle { list-style:none; padding:0; margin:0; display:flex; flex-direction:column; gap:var(--space-2); }
+.bd-bundle-step { display:flex; gap:var(--space-3); padding:var(--space-2); background:var(--bg-subtle); border-radius:var(--radius-sm); }
+.bd-bundle-num { display:inline-flex; align-items:center; justify-content:center; width:24px; height:24px; border-radius:50%; background:var(--accent-primary); color:#fff; font-size:11px; font-weight:700; flex-shrink:0; }
+.bd-bundle-body { flex:1; min-width:0; }
+.bd-comments { list-style:none; padding:0; margin:var(--space-2) 0; display:flex; flex-direction:column; gap:var(--space-2); }
+.bd-comment { padding:var(--space-2); background:var(--bg-subtle); border-radius:var(--radius-sm); border-left:2px solid var(--accent-primary); }
+.bd-comment-head { margin-bottom:var(--space-1); }
+.bd-comment-body { font-size:13px; line-height:1.5; }
+.bd-comment-add { display:flex; gap:var(--space-2); margin-top:var(--space-2); }
+.bd-comment-add input { flex:1; }
+    `;
+    document.head.appendChild(s);
+  }
+
+  FL.modules[MODULE_ID] = { mount, meta: { route: '/bandeja/:id', needsRole: ['operator','admin','owner'] } };
+})();
+</script>
