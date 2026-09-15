@@ -2,13 +2,14 @@ import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import { SpacesService } from '../spaces/index.js'
-import { JsonFileRepository } from '../store/repository.js'
+import { repositoryFromEnv } from '../store/from-env.js'
 import { startHttp } from './http.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const dataFile = process.env.FABERLOOM_DATA_FILE || path.join(__dirname, '..', '..', 'data', 'spaces.json')
+const dataDir = path.join(__dirname, '..', '..', 'data')
 
-const service = new SpacesService({ repository: new JsonFileRepository(dataFile) })
+const repository = await repositoryFromEnv(process.env, dataDir)
+const service = new SpacesService({ repository })
 
 startHttp({
   service,

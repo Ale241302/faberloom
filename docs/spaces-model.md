@@ -67,6 +67,17 @@ siempre es `owner`).
 - Sin pertenencia → `ACCESS_DENIED`; rol insuficiente → `FORBIDDEN`.
 - `members` acepta `['u2']` (rol `editor`) o `[{ userId, role }]`.
 
+**Herencia de miembros (`inheritMembers`, por defecto sí):** el rol de un usuario
+en un espacio es el **mayor privilegio** entre su pertenencia propia y la heredada
+de sus ancestros. La herencia se corta si algún espacio intermedio tiene
+`inheritMembers: false`. Ej.: un `admin` del padre actúa como `admin` en el hijo;
+un `viewer` heredado solo puede ver.
+
+**Empresa (`companyId`):** un espacio puede pertenecer a una empresa. Si la
+petición trae `X-MWT-Client-ID` y no coincide con el `companyId` del espacio, se
+deniega (`COMPANY_MISMATCH`). `spaces.list` filtra por empresa cuando se indica.
+El subespacio hereda la empresa del padre.
+
 ## 3. Contexto efectivo
 
 1. Se recorre la cadena de ancestros. Un espacio **solo** incluye a su padre si
@@ -106,15 +117,17 @@ contrato `run()` sin excepciones.
 ## 7. Persistencia
 
 El servicio acepta un `repository` con `read()`/`write(state)`; si se omite, usa
-memoria. Dos implementaciones incluidas:
+memoria. Implementaciones incluidas:
 
-- `MemoryRepository` (por defecto): estado en el proceso.
-- `JsonFileRepository(ruta)`: archivo JSON con **escritura atómica** (temp +
-  rename). Síncrono a propósito en este corte.
+- `MemoryRepository`: estado en el proceso (pruebas).
+- `JsonFileRepository(ruta)`: archivo JSON con **escritura atómica** (temp + rename).
+- `SqliteRepository(ruta)`: **backend definitivo** vía `node:sqlite`, con tablas
+  normalizadas (`spaces`, `space_context`, `space_excluded`, `space_members`).
 
-El servicio hidrata su estado al construirse y persiste tras cada mutación
-(crear/editar espacio, crear el ámbito personal). Estado persistido:
-`{ version, spaces[], personalIndex }`.
+Se elige con `FABERLOOM_STORE` = `json` (por defecto), `sqlite` o `memory`; la ruta
+con `FABERLOOM_DATA_FILE` (JSON) o `FABERLOOM_DB` (SQLite). El servicio hidrata al
+construirse y persiste el estado completo en una transacción tras cada mutación.
+`node:sqlite` es experimental en Node 22 (emite un aviso), pero no requiere flag.
 
 ## 8. Servidor MCP
 
@@ -135,8 +148,9 @@ Arranque: `FABERLOOM_DATA_FILE=/ruta/spaces.json node src/mcp/stdio.js`
 
 `src/mcp/http.js` sirve el mismo protocolo por **HTTP** (`POST /mcp`) con
 `GET /healthz`. Identidad por cabecera `X-Faberloom-User-Id` (o
-`X-Forwarded-User-Email`); la cabecera manda sobre cualquier `userId` del cuerpo.
-Si `FABERLOOM_GATEWAY_KEY` está definido, se exige `X-Faberloom-Gateway-Key`
+`X-Forwarded-User-Email`) y empresa por `X-MWT-Client-ID` (o
+`X-Faberloom-Company-Id`); las cabeceras mandan sobre el cuerpo. Si
+`FABERLOOM_GATEWAY_KEY` está definido, se exige `X-Faberloom-Gateway-Key`
 (fail-closed), igual que el MCP de la consola. En `initialize` devuelve
 `Mcp-Session-Id`.
 
@@ -144,11 +158,10 @@ Arranque: `FABERLOOM_PORT=8090 FABERLOOM_GATEWAY_KEY=... npm run mcp:http`.
 
 ## 9. Fuera de este corte (siguientes)
 
-- **Backend de datos** definitivo (SQLite/Postgres) y migraciones; hoy JSON.
-- **Roles heredados por subespacio** y verificación de acceso a cada ancestro al
-  resolver contexto.
-- **Identidad por empresa** (`X-MWT-Client-ID`) en el MCP HTTP, no solo el usuario.
 - Integración con la **UI** del harness (navegación por espacios) y con el login
-  del gateway.
+  del gateway (la identidad/empresa ya viaja por el MCP; falta el montaje en el
+  despliegue).
 - Vínculo real de **conversaciones y archivos** a espacios (más allá de la vista
   previa).
+- Escritura incremental del repositorio SQLite (hoy reemplaza el estado en una
+  transacción por mutación).

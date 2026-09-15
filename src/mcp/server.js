@@ -30,6 +30,8 @@ const TOOLS = [
         ownerId: { type: 'string', description: 'Por defecto, el usuario conectado' },
         parentId: { type: 'string' },
         inheritContext: { type: 'boolean' },
+        inheritMembers: { type: 'boolean', description: 'Heredar miembros/roles del padre (por defecto sí)' },
+        companyId: { type: 'string', description: 'Empresa (X-MWT-Client-ID); por defecto la del padre' },
         members: { type: 'array', items: memberItem },
         context: { type: 'array', items: { type: 'object', properties: CH, required: ['key'] } },
         excluded: { type: 'array', items: { type: 'string' } },
@@ -50,6 +52,8 @@ const TOOLS = [
         name: { type: 'string' },
         theme: { type: 'string' },
         inheritContext: { type: 'boolean' },
+        inheritMembers: { type: 'boolean', description: 'Heredar miembros/roles del padre (por defecto sí)' },
+        companyId: { type: 'string', description: 'Empresa (X-MWT-Client-ID); por defecto la del padre' },
         members: { type: 'array', items: memberItem },
         context: { type: 'array', items: { type: 'object', properties: CH, required: ['key'] } },
         excluded: { type: 'array', items: { type: 'string' } },
@@ -101,32 +105,36 @@ const TOOLS = [
   { name: 'spaces_resolve_workdir', description: 'Referencia opaca del directorio de trabajo.', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' } }, required: ['spaceId'] } },
 ]
 
-function mapTool(name, args, userId) {
+function mapTool(name, args, ctx) {
+  const { userId, companyId } = ctx
+  const common = companyId ? { userId, companyId } : { userId }
   switch (name) {
-    case 'spaces_create':
-      return ['spaces.create', { ...args, ownerId: args.ownerId || userId }]
+    case 'spaces_create': {
+      const { userId: _u, companyId: _c, ownerId, ...rest } = args
+      return ['spaces.create', { ...rest, ownerId: ownerId || userId, companyId }]
+    }
     case 'spaces_get':
-      return ['spaces.get', { spaceId: args.spaceId, userId }]
+      return ['spaces.get', { ...common, spaceId: args.spaceId }]
     case 'spaces_list':
-      return ['spaces.list', { userId }]
+      return ['spaces.list', common]
     case 'spaces_update': {
-      const { spaceId, userId: _ignored, ...patch } = args
-      return ['spaces.update', { spaceId, userId, patch }]
+      const { spaceId, userId: _ignored, companyId: _c, ...patch } = args
+      return ['spaces.update', { ...common, spaceId, patch }]
     }
     case 'spaces_add_member':
-      return ['spaces.addMember', { spaceId: args.spaceId, memberId: args.memberId, role: args.role || 'editor', userId }]
+      return ['spaces.addMember', { ...common, spaceId: args.spaceId, memberId: args.memberId, role: args.role || 'editor' }]
     case 'spaces_remove_member':
-      return ['spaces.removeMember', { spaceId: args.spaceId, memberId: args.memberId, userId }]
+      return ['spaces.removeMember', { ...common, spaceId: args.spaceId, memberId: args.memberId }]
     case 'spaces_set_member_role':
-      return ['spaces.setMemberRole', { spaceId: args.spaceId, memberId: args.memberId, role: args.role, userId }]
+      return ['spaces.setMemberRole', { ...common, spaceId: args.spaceId, memberId: args.memberId, role: args.role }]
     case 'spaces_effective_context':
-      return ['spaces.effectiveContext', { spaceId: args.spaceId, userId }]
+      return ['spaces.effectiveContext', { ...common, spaceId: args.spaceId }]
     case 'spaces_personal':
-      return ['spaces.personal', { userId, spaceId: args.spaceId }]
+      return ['spaces.personal', { ...common, spaceId: args.spaceId }]
     case 'spaces_preview_link':
-      return ['spaces.previewLink', { userId, targetSpaceId: args.targetSpaceId, material: args.material || [] }]
+      return ['spaces.previewLink', { ...common, targetSpaceId: args.targetSpaceId, material: args.material || [] }]
     case 'spaces_resolve_workdir':
-      return ['spaces.resolveWorkdir', { spaceId: args.spaceId, userId }]
+      return ['spaces.resolveWorkdir', { ...common, spaceId: args.spaceId }]
     default:
       return null
   }
@@ -158,7 +166,7 @@ export function createMcpServer({ service, defaultUserId = process.env.FABERLOOM
     if (method === 'tools/call') {
       const name = params?.name
       const args = params?.arguments || {}
-      const mapped = mapTool(name, args, args.userId || defaultUserId)
+      const mapped = mapTool(name, args, { userId: args.userId || defaultUserId, companyId: args.companyId })
       if (!mapped) return rpcError(id, -32602, `herramienta desconocida: ${name}`)
       const [operation, opParams] = mapped
       const out = service.run(operation, opParams)

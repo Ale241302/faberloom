@@ -39,10 +39,11 @@ export function createHttpHandler({ service, gatewayKey = '', defaultUserId = 'a
       req.on('error', reject)
     })
 
-  // La identidad de la cabecera manda sobre cualquier userId del cuerpo.
-  const withUserId = (message, userId) => {
+  // La identidad de la cabecera manda sobre cualquier userId/companyId del cuerpo.
+  const withContext = (message, userId, companyId) => {
     if (message && message.method === 'tools/call' && message.params) {
-      message.params.arguments = { ...(message.params.arguments || {}), userId }
+      const extra = companyId ? { userId, companyId } : { userId }
+      message.params.arguments = { ...(message.params.arguments || {}), ...extra }
     }
     return message
   }
@@ -59,6 +60,7 @@ export function createHttpHandler({ service, gatewayKey = '', defaultUserId = 'a
       return sendJson(res, 401, { error: 'unauthorized', code: 'GATEWAY_KEY' })
     }
     const userId = req.headers['x-faberloom-user-id'] || req.headers['x-forwarded-user-email'] || defaultUserId
+    const companyId = req.headers['x-mwt-client-id'] || req.headers['x-faberloom-company-id'] || undefined
 
     if (req.method === 'GET') {
       res.writeHead(405, { allow: 'POST, DELETE' })
@@ -87,7 +89,7 @@ export function createHttpHandler({ service, gatewayKey = '', defaultUserId = 'a
     let newSession
     for (const message of messages) {
       if (message && message.method === 'initialize') newSession = randomUUID()
-      const response = mcp.handleMessage(withUserId(message, userId))
+      const response = mcp.handleMessage(withContext(message, userId, companyId))
       if (response) responses.push(response)
     }
 

@@ -4,9 +4,8 @@ import { randomUUID, createHash } from 'node:crypto'
  * E3 · Espacios y contexto.
  *
  * Núcleo independiente del harness: modelo de espacios, subespacios,
- * herencia/exclusiones, contexto efectivo, ámbito personal, audiencia y ACL por
- * espacio. Es la lógica compartida que consumen la UI y el servidor MCP de
- * FaberLoom mediante `run(operation, params)`.
+ * herencia (contexto y miembros), exclusiones, contexto efectivo, ámbito
+ * personal, audiencia, ACL por espacio e identidad por empresa.
  */
 
 export class SpacesError extends Error {
@@ -26,11 +25,13 @@ const err = (e) => ({ ok: false, error: { code: e.code, message: e.message } })
 
 /** Roles por espacio y qué permisos concede cada uno. */
 export const ROLES = ['owner', 'admin', 'editor', 'viewer']
+const ROLE_RANK = { viewer: 1, editor: 2, admin: 3, owner: 4 }
 const PERMISSIONS = {
   view: ['owner', 'admin', 'editor', 'viewer'],
   edit: ['owner', 'admin', 'editor'],
   manage: ['owner', 'admin'],
 }
+const higher = (a, b) => (!a ? b : !b ? a : ROLE_RANK[a] >= ROLE_RANK[b] ? a : b)
 
 function normalizeContext(items) {
   if (!Array.isArray(items)) return []
@@ -80,10 +81,16 @@ export class SpacesService {
 
   // ── Operaciones ────────────────────────────────────────────────────
   createSpace(params = {}) {
-    const { name, ownerId, parentId = null, inheritContext = true, members = [], context = [], excluded = [], theme = null } = params
+    const { name, ownerId, parentId = null, inheritContext = true, inheritMembers = true, members = [], context = [], excluded = [], theme = null } = params
     if (!name || typeof name !== 'string') fail('INVALID_NAME', 'name es obligatorio')
     if (!ownerId) fail('INVALID_OWNER', 'ownerId es obligatorio')
-    if (parentId && !this.#spaces.has(parentId)) fail('PARENT_NOT_FOUND', `el padre ${parentId} no existe`)
+
+    let companyId = params.companyId ?? null
+    if (parentId) {
+      const parent = this.#require(parentId)
+      this.#assertAccess(parent, ownerId, 'edit', params.companyId)
+      if (companyId == null) companyId = parent.companyId ?? null
+    }
 
     const space = {
       id: this._id('sp'),
@@ -92,7 +99,9 @@ export class SpacesService {
       ownerId,
       parentId: parentId || null,
       inheritContext: inheritContext !== false,
+      inheritMembers: inheritMembers !== false,
       personal: false,
+      companyId,
       members: normalizeMembers(ownerId, members),
       context: normalizeContext(context),
       excluded: Array.isArray(excluded) ? [...excluded] : [],
@@ -104,40 +113,42 @@ export class SpacesService {
     return this.#view(space)
   }
 
-  getSpace(spaceId, { userId } = {}) {
+  getSpace(spaceId, { userId, companyId } = {}) {
     const s = this.#require(spaceId)
-    this.#assertAccess(s, userId, 'view')
+    this.#assertAccess(s, userId, 'view', companyId)
     return this.#view(s)
   }
 
-  listSpaces({ userId } = {}) {
+  listSpaces({ userId, companyId } = {}) {
     if (!userId) fail('INVALID_USER', 'userId es obligatorio')
     return [...this.#spaces.values()]
-      .filter((s) => !s.personal && this.#memberRole(s, userId))
+      .filter((s) => !s.personal && this.#effectiveRole(s, userId) && (!companyId || s.companyId === companyId))
       .map((s) => this.#view(s))
   }
 
-  updateSpace(spaceId, patch = {}, { userId } = {}) {
+  updateSpace(spaceId, patch = {}, { userId, companyId } = {}) {
     const s = this.#require(spaceId)
-    const touchesMembers = patch.members !== undefined
-    this.#assertAccess(s, userId, touchesMembers ? 'manage' : 'edit')
+    const sensitive = patch.members !== undefined || patch.companyId !== undefined
+    this.#assertAccess(s, userId, sensitive ? 'manage' : 'edit', companyId)
     if (patch.name !== undefined) {
       if (!patch.name) fail('INVALID_NAME', 'name no puede quedar vacío')
       s.name = patch.name
     }
     if (patch.theme !== undefined) s.theme = patch.theme
     if (patch.inheritContext !== undefined) s.inheritContext = patch.inheritContext !== false
+    if (patch.inheritMembers !== undefined) s.inheritMembers = patch.inheritMembers !== false
     if (patch.context !== undefined) s.context = normalizeContext(patch.context)
     if (patch.excluded !== undefined) s.excluded = Array.isArray(patch.excluded) ? [...patch.excluded] : []
-    if (touchesMembers) s.members = normalizeMembers(s.ownerId, patch.members)
+    if (patch.members !== undefined) s.members = normalizeMembers(s.ownerId, patch.members)
+    if (patch.companyId !== undefined) s.companyId = patch.companyId ?? null
     s.version += 1
     this.#persist()
     return this.#view(s)
   }
 
-  addMember({ spaceId, memberId, role = 'editor', userId } = {}) {
+  addMember({ spaceId, memberId, role = 'editor', userId, companyId } = {}) {
     const s = this.#require(spaceId)
-    this.#assertAccess(s, userId, 'manage')
+    this.#assertAccess(s, userId, 'manage', companyId)
     if (!memberId) fail('INVALID_MEMBER', 'memberId es obligatorio')
     if (memberId === s.ownerId) fail('INVALID_MEMBER', 'el propietario ya pertenece al espacio')
     if (!ROLES.includes(role) || role === 'owner') fail('INVALID_ROLE', `rol inválido: ${role}`)
@@ -149,9 +160,9 @@ export class SpacesService {
     return this.#view(s)
   }
 
-  removeMember({ spaceId, memberId, userId } = {}) {
+  removeMember({ spaceId, memberId, userId, companyId } = {}) {
     const s = this.#require(spaceId)
-    this.#assertAccess(s, userId, 'manage')
+    this.#assertAccess(s, userId, 'manage', companyId)
     if (memberId === s.ownerId) fail('INVALID_MEMBER', 'no se puede quitar al propietario')
     s.members = s.members.filter((m) => m.userId !== memberId)
     s.version += 1
@@ -159,9 +170,9 @@ export class SpacesService {
     return this.#view(s)
   }
 
-  setMemberRole({ spaceId, memberId, role, userId } = {}) {
+  setMemberRole({ spaceId, memberId, role, userId, companyId } = {}) {
     const s = this.#require(spaceId)
-    this.#assertAccess(s, userId, 'manage')
+    this.#assertAccess(s, userId, 'manage', companyId)
     if (memberId === s.ownerId) fail('INVALID_MEMBER', 'no se puede cambiar el rol del propietario')
     if (!ROLES.includes(role) || role === 'owner') fail('INVALID_ROLE', `rol inválido: ${role}`)
     const member = s.members.find((m) => m.userId === memberId)
@@ -172,27 +183,27 @@ export class SpacesService {
     return this.#view(s)
   }
 
-  effectiveContext(spaceId, { userId } = {}) {
+  effectiveContext(spaceId, { userId, companyId } = {}) {
     const s = this.#require(spaceId)
-    this.#assertAccess(s, userId, 'view')
+    this.#assertAccess(s, userId, 'view', companyId)
     const { items, versions } = this.#collect(s.id, new Set())
     const { kept, removed } = this.#applyExclusions(items, s.excluded)
     const { resolved, conflicts } = this.#merge(kept)
     return { spaceId: s.id, items: kept, resolved, conflicts, excluded: removed, versions }
   }
 
-  resolveScope({ userId, spaceId = null } = {}) {
+  resolveScope({ userId, spaceId = null, companyId } = {}) {
     if (!userId) fail('INVALID_USER', 'userId es obligatorio')
     if (!spaceId) return this.#view(this.#ensurePersonal(userId))
     const s = this.#require(spaceId)
-    this.#assertAccess(s, userId, 'view')
+    this.#assertAccess(s, userId, 'view', companyId)
     return this.#view(s)
   }
 
-  previewLink({ userId, targetSpaceId, material = [] } = {}) {
+  previewLink({ userId, targetSpaceId, material = [], companyId } = {}) {
     if (!userId) fail('INVALID_USER', 'userId es obligatorio')
     const target = this.#require(targetSpaceId)
-    this.#assertAccess(target, userId, 'view')
+    this.#assertAccess(target, userId, 'view', companyId)
     const audienceBefore = [userId]
     const audienceAfter = uniq(target.members.map((m) => m.userId))
     const newlyVisibleTo = audienceAfter.filter((u) => !audienceBefore.includes(u))
@@ -218,10 +229,9 @@ export class SpacesService {
     }
   }
 
-  resolveWorkdir(spaceId, { userId } = {}) {
+  resolveWorkdir(spaceId, { userId, companyId } = {}) {
     const s = this.#require(spaceId)
-    this.#assertAccess(s, userId, 'view')
-    // El path real del harness nunca se expone: solo una referencia opaca.
+    this.#assertAccess(s, userId, 'view', companyId)
     const ref = 'fw_' + createHash('sha256').update(s.id).digest('hex').slice(0, 24)
     return { spaceId: s.id, ref }
   }
@@ -256,20 +266,55 @@ export class SpacesService {
     return s
   }
 
-  #memberRole(space, userId) {
-    if (!userId) return undefined
+  #localRole(space, userId) {
     if (space.ownerId === userId) return 'owner'
     const m = (space.members || []).find((x) => x.userId === userId)
     return m ? m.role : undefined
   }
 
-  #assertAccess(space, userId, permission = 'view') {
+  #chain(space) {
+    const chain = []
+    const seen = new Set()
+    let cur = space
+    while (cur) {
+      if (seen.has(cur.id)) break
+      seen.add(cur.id)
+      chain.unshift(cur)
+      cur = cur.parentId ? this.#spaces.get(cur.parentId) : null
+    }
+    return chain
+  }
+
+  /** Rol efectivo combinando pertenencia propia y la heredada de ancestros. */
+  #effectiveRole(space, userId) {
+    if (!userId) return undefined
+    const chain = this.#chain(space)
+    let best
+    for (let i = 0; i < chain.length; i++) {
+      const local = this.#localRole(chain[i], userId)
+      if (!local) continue
+      let allowed = true
+      for (let j = i + 1; j < chain.length; j++) {
+        if (chain[j].inheritMembers === false) {
+          allowed = false
+          break
+        }
+      }
+      if (allowed) best = higher(best, local)
+    }
+    return best
+  }
+
+  #assertAccess(space, userId, permission = 'view', companyId = undefined) {
     if (!userId) fail('INVALID_USER', 'userId es obligatorio')
     if (space.personal) {
       if (space.ownerId !== userId) fail('ACCESS_DENIED', 'ámbito personal de otro usuario')
       return
     }
-    const role = this.#memberRole(space, userId)
+    if (companyId && space.companyId && space.companyId !== companyId) {
+      fail('ACCESS_DENIED', `COMPANY_MISMATCH: el espacio es de otra empresa`)
+    }
+    const role = this.#effectiveRole(space, userId)
     if (!role) fail('ACCESS_DENIED', `sin acceso al espacio ${space.id}`)
     if (!PERMISSIONS[permission].includes(role)) {
       fail('FORBIDDEN', `el rol ${role} no permite ${permission} en ${space.id}`)
@@ -286,7 +331,9 @@ export class SpacesService {
       ownerId: userId,
       parentId: null,
       inheritContext: false,
+      inheritMembers: false,
       personal: true,
+      companyId: null,
       members: [{ userId, role: 'owner' }],
       context: [],
       excluded: [],
@@ -353,8 +400,12 @@ export class SpacesService {
       ownerId: s.ownerId,
       parentId: s.parentId,
       inheritContext: s.inheritContext,
+      inheritMembers: s.inheritMembers,
       personal: s.personal,
+      companyId: s.companyId ?? null,
       members: (s.members || []).map((m) => ({ ...m })),
+      context: (s.context || []).map((c) => ({ ...c })),
+      excluded: [...(s.excluded || [])],
       version: s.version,
       createdAt: s.createdAt,
     }

@@ -74,6 +74,22 @@ test('HTTP MCP: ACL por rol end-to-end', async () => {
   })
 })
 
+test('HTTP MCP: X-MWT-Client-ID se usa como empresa', async () => {
+  await withServer({}, async (base) => {
+    const created = await rpc(
+      base,
+      call({ name: 'spaces_create', arguments: { name: 'Sondel' } }),
+      { 'x-faberloom-user-id': 'alice', 'x-mwt-client-id': 'sondel' },
+    )
+    const space = JSON.parse(created.json.result.content[0].text)
+    assert.equal(space.companyId, 'sondel')
+
+    const other = await rpc(base, call({ name: 'spaces_get', arguments: { spaceId: space.id } }), { 'x-faberloom-user-id': 'alice', 'x-mwt-client-id': 'otra' })
+    assert.equal(other.json.result.isError, true)
+    assert.match(other.json.result.content[0].text, /ACCESS_DENIED/)
+  })
+})
+
 test('HTTP MCP: gateway key obligatoria si está configurada', async () => {
   await withServer({ gatewayKey: 'k1' }, async (base) => {
     assert.equal((await rpc(base, { jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} })).status, 401)

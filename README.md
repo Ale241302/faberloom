@@ -14,11 +14,13 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
 - **Ámbito personal** («sin espacio asignado») aislado por usuario.
 - **Vista previa de audiencia** al vincular una conversación a un espacio
   compartido.
-- **Persistencia** con repositorio intercambiable (memoria o archivo JSON atómico).
+- **Persistencia** con repositorio intercambiable: memoria, archivo JSON atómico
+  o **SQLite** normalizado (`FABERLOOM_STORE=json|sqlite|memory`).
 - **ACL por espacio**: roles `owner`/`admin`/`editor`/`viewer` con permisos
-  `view`/`edit`/`manage`.
-- **Servidor MCP** en **stdio** y **HTTP** (identidad por cabecera y gateway key
-  opcional) que expone las operaciones como herramientas.
+  `view`/`edit`/`manage`, **herencia de miembros** por subespacio e **identidad por
+  empresa** (`X-MWT-Client-ID`).
+- **Servidor MCP** en **stdio** y **HTTP** (identidad/empresa por cabecera y
+  gateway key opcional) que expone las operaciones como herramientas.
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).
@@ -27,12 +29,15 @@ Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).
 
 ```js
 import { SpacesService } from './src/spaces/index.js'
-import { JsonFileRepository } from './src/store/repository.js'
+import { SqliteRepository } from './src/store/sqlite.js'
 
-const spaces = new SpacesService({ repository: new JsonFileRepository('./data/spaces.json') })
+const spaces = new SpacesService({ repository: new SqliteRepository('./data/spaces.sqlite') })
 const { ok, data } = spaces.run('spaces.create', { name: 'Marluvas', ownerId: 'u1' })
 console.log(data.id)
 ```
+
+Backend y ruta por entorno: `FABERLOOM_STORE` (`json` por defecto, `sqlite`,
+`memory`), `FABERLOOM_DATA_FILE` (JSON) o `FABERLOOM_DB` (SQLite).
 
 Servidor MCP por stdio:
 
@@ -57,10 +62,9 @@ node --test
 
 - El núcleo es **independiente del harness**: no asume que un directorio técnico
   sea un espacio de negocio.
-- Persistencia en archivo JSON (síncrona) en este corte; el backend definitivo se
-  decide tras el inventario de persistencia del harness.
-- Pendiente: transporte MCP por HTTP con identidad por usuario/empresa, ACL fina e
-  integración con la UI del harness.
+- Backends disponibles: JSON y **SQLite** (`node:sqlite`, experimental en Node 22).
+- Pendiente: integración con la UI del harness y vínculo real de conversaciones y
+  archivos a espacios.
 
 ## Mockup v2 (prototipo visual previo · abril 2026)
 
