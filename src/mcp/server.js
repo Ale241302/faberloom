@@ -183,6 +183,12 @@ const AGENTS_TOOLS = [
   { name: 'agents_resolve_model', description: 'Resuelve el modelo efectivo para una tarea (principal, fallback, escalamiento, presupuesto).', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, task: { type: 'object' } }, required: ['agentId'] } },
   { name: 'agents_record_selection', description: 'Registra la selección de modelo aplicada a una ejecución.', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, taskId: { type: 'string' }, decision: { type: 'object' } }, required: ['agentId', 'decision'] } },
   { name: 'agents_list_selections', description: 'Historial de selecciones de un agente.', inputSchema: { type: 'object', properties: { agentId: { type: 'string' } } } },
+  { name: 'tools_list', description: 'Herramientas ejecutables registradas.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'agents_execute_tool', description: 'Ejecuta una herramienta permitida al agente.', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, toolId: { type: 'string' }, input: { type: 'object' }, modelId: { type: 'string' } }, required: ['agentId', 'toolId'] } },
+  { name: 'agents_delegate', description: 'Delega en un subagente autorizado (política propia + presupuesto compartido).', inputSchema: { type: 'object', properties: { parentAgentId: { type: 'string' }, subagentAgentId: { type: 'string' }, task: { type: 'object' }, toolCalls: { type: 'array' } }, required: ['parentAgentId', 'subagentAgentId'] } },
+  { name: 'agents_list_executions', description: 'Ejecuciones (herramientas y delegaciones) de un agente.', inputSchema: { type: 'object', properties: { agentId: { type: 'string' } } } },
+  { name: 'models_record_outcome', description: 'Registra evidencia real (approved/corrected/error) de un modelo.', inputSchema: { type: 'object', properties: { modelId: { type: 'string' }, taskType: { type: 'string' }, outcome: { type: 'string', enum: ['approved', 'corrected', 'error'] }, cost: { type: 'number' }, latencyMs: { type: 'number' } }, required: ['modelId', 'outcome'] } },
+  { name: 'models_evidence', description: 'Evidencia agregada por modelo/tipo de tarea.', inputSchema: { type: 'object', properties: { modelId: { type: 'string' }, taskType: { type: 'string' } } } },
 ]
 
 function mapAgents(name, args, ctx) {
@@ -209,6 +215,12 @@ function mapAgents(name, args, ctx) {
     case 'agents_resolve_model': return ['agents.resolveModel', { agentId: args.agentId, task: args.task || {} }]
     case 'agents_record_selection': return ['agents.recordSelection', { agentId: args.agentId, taskId: args.taskId, decision: args.decision }]
     case 'agents_list_selections': return ['agents.listSelections', { agentId: args.agentId }]
+    case 'tools_list': return ['tools.list', {}]
+    case 'agents_execute_tool': return ['agents.executeTool', { agentId: args.agentId, toolId: args.toolId, input: args.input || {}, modelId: args.modelId || null }]
+    case 'agents_delegate': return ['agents.delegate', { parentAgentId: args.parentAgentId, subagentAgentId: args.subagentAgentId, task: args.task || {}, toolCalls: args.toolCalls || [] }]
+    case 'agents_list_executions': return ['agents.listExecutions', { agentId: args.agentId }]
+    case 'models_record_outcome': return ['models.recordOutcome', { modelId: args.modelId, taskType: args.taskType, outcome: args.outcome, cost: args.cost, latencyMs: args.latencyMs }]
+    case 'models_evidence': return ['models.evidence', { modelId: args.modelId, taskType: args.taskType }]
     default: return null
   }
 }
@@ -294,7 +306,7 @@ export function createMcpServer({ service, agentsService, defaultUserId = proces
       if (service && name && name.startsWith('spaces_')) {
         svc = service
         mapped = mapTool(name, args, ctx)
-      } else if (agentsService && name && (name.startsWith('models_') || name.startsWith('templates_') || name.startsWith('agents_'))) {
+      } else if (agentsService && name && (name.startsWith('models_') || name.startsWith('templates_') || name.startsWith('agents_') || name.startsWith('tools_'))) {
         svc = agentsService
         mapped = mapAgents(name, args, ctx)
       }

@@ -26,6 +26,8 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
 - **Agentes y política de modelos** (E4): pool de modelos, catálogo versionado con
   tres rutas de creación, política (principal/exclusividad/alternativas/
   escalamiento/presupuesto), resolver y recomendador.
+- **Herramientas y subagentes ejecutables** y **evidencia real por modelo**
+  (`executeTool`, `delegate`, `recordOutcome`/`evidence`).
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).

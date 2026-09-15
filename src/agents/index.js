@@ -63,7 +63,11 @@ export class AgentsService {
   #models = new Map()
   #agents = new Map()
   #templates = new Map()
+  #tools = new Map()
   #selections = []
+  #executions = []
+  #evidence = new Map() // `${modelId}|${taskType}` -> agregado
+  #evidenceRecords = []
   #idGen
   #now
   #repo
@@ -78,6 +82,9 @@ export class AgentsService {
         for (const m of state.models || []) this.#models.set(m.id, m)
         for (const a of state.agents || []) this.#agents.set(a.id, a)
         this.#selections = [...(state.selections || [])]
+        this.#executions = [...(state.executions || [])]
+        this.#evidenceRecords = [...(state.evidence || [])]
+        for (const ev of this.#evidenceRecords) this.#applyEvidence(ev)
       }
     }
   }
@@ -287,42 +294,154 @@ export class AgentsService {
     return this.updateAgent(agentId, { active: false })
   }
 
+  // ── Herramientas ejecutables ───────────────────────────────────────
+  registerTool({ id, name = null, handler, cost = null } = {}) {
+    if (!id) fail('INVALID_TOOL', 'id es obligatorio')
+    if (typeof handler !== 'function') fail('INVALID_TOOL', 'handler debe ser una función')
+    this.#tools.set(id, { id, name: name || id, handler, cost })
+    return { id, name: name || id }
+  }
+
+  listTools() {
+    return [...this.#tools.values()].map((t) => ({ id: t.id, name: t.name, cost: t.cost }))
+  }
+
+  executeTool({ agentId, toolId, input = {}, modelId = null } = {}) {
+    const agent = this.#requireAgent(agentId)
+    if (agent.active === false) fail('AGENT_INACTIVE', `agente ${agentId} inactivo`)
+    const tool = this.#tools.get(toolId)
+    if (!tool) fail('TOOL_NOT_FOUND', `herramienta ${toolId} no registrada`)
+    if (!this.#toolAllowed(agent, toolId)) fail('FORBIDDEN_TOOL', `el agente ${agentId} no tiene permitida ${toolId}`)
+
+    const executionId = this._id('exe')
+    const started = Date.now()
+    let status = 'ok'
+    let output
+    let error = null
+    try {
+      output = tool.handler(input, { agentId, modelId, executionId })
+    } catch (e) {
+      status = 'error'
+      error = (e && e.message) || String(e)
+    }
+    const record = { id: executionId, agentId, kind: 'tool', toolId, subagentId: null, modelId, status, cost: tool.cost ?? null, durationMs: Date.now() - started, error, createdAt: this.#now() }
+    this.#executions.push(record)
+    this.#persistExecution(record)
+    return status === 'ok' ? { executionId, status, output, durationMs: record.durationMs } : { executionId, status, error, durationMs: record.durationMs }
+  }
+
+  /** Delegación a un subagente: respeta su política y el presupuesto compartido. */
+  delegate({ parentAgentId, subagentAgentId, task = {}, toolCalls = [] } = {}) {
+    const parent = this.#requireAgent(parentAgentId)
+    if (parent.active === false) fail('AGENT_INACTIVE', `agente ${parentAgentId} inactivo`)
+    if (!subagentAgentId) fail('INVALID_DELEGATION', 'subagentAgentId es obligatorio')
+    if (!parent.subagents.includes(subagentAgentId)) fail('FORBIDDEN_SUBAGENT', `el padre ${parentAgentId} no tiene autorizado ${subagentAgentId}`)
+    const child = this.#requireAgent(subagentAgentId)
+
+    const decision = this.resolveModel({ agentId: child.id, task })
+    if (decision.status !== 'selected') {
+      return { status: decision.status, reason: decision.reason, childAgentId: child.id, decision }
+    }
+
+    const amount = parent.modelPolicy?.budget?.amount
+    const spent = Number(task.budgetSpent || 0)
+    if (typeof amount === 'number') {
+      if (decision.estimatedCost == null) return { status: 'needs_decision', reason: 'COST_UNKNOWN', childAgentId: child.id, decision }
+      if (spent + decision.estimatedCost > amount) return { status: 'denied', reason: 'BUDGET_EXCEEDED', childAgentId: child.id, decision }
+    }
+
+    const executions = []
+    for (const call of toolCalls) {
+      let r
+      try {
+        r = this.executeTool({ agentId: child.id, toolId: call.toolId, input: call.input || {}, modelId: decision.modelId })
+      } catch (e) {
+        r = { status: 'error', error: (e && e.message) || String(e) }
+      }
+      executions.push(r)
+      if (r.status === 'error') break
+    }
+
+    const failed = executions.some((e) => e.status === 'error')
+    const record = { id: this._id('exe'), agentId: parent.id, kind: 'delegation', toolId: null, subagentId: child.id, modelId: decision.modelId, status: failed ? 'error' : 'ok', cost: decision.estimatedCost ?? null, durationMs: 0, error: failed ? 'tool_error' : null, createdAt: this.#now() }
+    this.#executions.push(record)
+    this.#persistExecution(record)
+
+    return { status: 'selected', delegationId: record.id, childAgentId: child.id, modelId: decision.modelId, policyVersion: decision.policyVersion, estimatedCost: decision.estimatedCost, executions, failed }
+  }
+
+  listExecutions({ agentId } = {}) {
+    return this.#executions.filter((e) => !agentId || e.agentId === agentId).map((e) => ({ ...e }))
+  }
+
+  // ── Evidencia real por modelo ──────────────────────────────────────
+  recordOutcome({ modelId, taskType = 'general', outcome, cost = null, latencyMs = null } = {}) {
+    this.#requireModel(modelId)
+    if (!['approved', 'corrected', 'error'].includes(outcome)) fail('INVALID_OUTCOME', `outcome inválido: ${outcome}`)
+    const ev = { id: this._id('ev'), modelId, taskType, outcome, cost, latencyMs, createdAt: this.#now() }
+    this.#applyEvidence(ev)
+    this.#evidenceRecords.push(ev)
+    this.#persistEvidence(ev)
+    return this.#evidenceView(this.#evidence.get(`${modelId}|${taskType}`))
+  }
+
+  evidence({ modelId, taskType } = {}) {
+    return [...this.#evidence.values()]
+      .map((a) => this.#evidenceView(a))
+      .filter((a) => (!modelId || a.modelId === modelId) && (!taskType || a.taskType === taskType))
+  }
+
   // ── Recomendación ──────────────────────────────────────────────────
-  recommendModel({ agentId = null, requirements = null, task = null } = {}) {
+  recommendModel({ agentId = null, requirements = null, task = null, taskType = 'general' } = {}) {
     const agent = agentId ? this.#requireAgent(agentId) : null
     const req = normalizeRequirements(requirements || (agent ? agent.requirements : {}))
     const limitations = []
+
     const candidates = [...this.#models.values()]
-      .filter((m) => m.available)
+      .filter((m) => m.available && this.#compatible(m, req))
       .map((m) => {
-        const meets = this.#compatible(m, req)
+        const ev = this.#evidenceView(this.#evidence.get(`${m.id}|${taskType}`))
         const est = task ? this.#estimateCost(m, task) : null
-        const expected = est === null ? null : { ...est, result: { ...est.result, cost: est.total } }
+        const costKnown = !!(m.pricing && m.pricing.input != null && m.pricing.output != null) && !!task
         return {
           modelId: m.id,
           provider: m.provider,
           name: m.name,
           capabilities: { ...m.capabilities },
-          meetsRequirements: meets,
           estimatedCost: est ? est.total : null,
-          costKnown: !!(m.pricing && m.pricing.input != null && m.pricing.output != null) && !!task,
-          evidence: m.notes ? 'declared' : 'none',
+          costKnown,
+          probed: ev.samples > 0,
+          evidence: ev,
         }
       })
-      .filter((c) => c.meetsRequirements)
 
-    const known = candidates.filter((c) => c.costKnown).sort((a, b) => a.estimatedCost - b.estimatedCost)
-    const unknown = candidates.filter((c) => !c.costKnown)
     if (!candidates.length) {
       return { requirements: req, candidates: [], recommended: null, provisional: true, limitations: ['sin_candidatos_compatibles'] }
     }
+
+    const probed = candidates.filter((c) => c.probed && c.evidence.costPerUsefulResult != null).sort((a, b) => a.evidence.costPerUsefulResult - b.evidence.costPerUsefulResult)
+    const known = candidates.filter((c) => c.costKnown).sort((a, b) => a.estimatedCost - b.estimatedCost)
     if (!known.length) limitations.push('cost_unknown')
-    const provisional = !known.length || known[0].evidence === 'none'
-    if (provisional) limitations.push('recomendacion_provisional_por_capacidades_declaradas')
+
+    let recommended = null
+    let basis = 'unknown'
+    if (probed.length) {
+      recommended = probed[0]
+      basis = 'evidence'
+    } else if (known.length) {
+      recommended = known[0]
+      basis = 'estimated'
+    }
+
+    const provisional = !recommended || recommended.evidence.samples === 0
+    if (provisional && recommended) limitations.push('recomendacion_provisional_por_capacidades_declaradas')
+
     return {
       requirements: req,
+      taskType,
       candidates,
-      recommended: known.length ? known[0].modelId : null,
+      recommended: recommended ? recommended.modelId : null,
+      basis,
       costKnown: known.length > 0,
       provisional,
       limitations,
@@ -464,6 +583,13 @@ export class AgentsService {
         case 'agents.resolveModel': return ok(this.resolveModel(params))
         case 'agents.recordSelection': return ok(this.recordSelection(params))
         case 'agents.listSelections': return ok(this.listSelections(params))
+        case 'tools.register': return ok(this.registerTool(params))
+        case 'tools.list': return ok(this.listTools())
+        case 'agents.executeTool': return ok(this.executeTool(params))
+        case 'agents.delegate': return ok(this.delegate(params))
+        case 'agents.listExecutions': return ok(this.listExecutions(params))
+        case 'models.recordOutcome': return ok(this.recordOutcome(params))
+        case 'models.evidence': return ok(this.evidence(params))
         default: return { ok: false, error: { code: 'UNKNOWN_OPERATION', message: operation } }
       }
     } catch (e) {
@@ -529,6 +655,59 @@ export class AgentsService {
   #persistSelection(s) {
     if (this.#repo && typeof this.#repo.saveSelection === 'function') this.#repo.saveSelection(s)
     else if (this.#repo && typeof this.#repo.write === 'function') this.#repo.write({ selections: [...this.#selections] })
+  }
+
+  #persistExecution(e) {
+    if (this.#repo && typeof this.#repo.saveExecution === 'function') this.#repo.saveExecution(e)
+    else if (this.#repo && typeof this.#repo.write === 'function') this.#repo.write({ executions: [...this.#executions] })
+  }
+
+  #persistEvidence(ev) {
+    if (this.#repo && typeof this.#repo.saveEvidence === 'function') this.#repo.saveEvidence(ev)
+    else if (this.#repo && typeof this.#repo.write === 'function') this.#repo.write({ evidence: [...this.#evidenceRecords] })
+  }
+
+  #applyEvidence(ev) {
+    const key = `${ev.modelId}|${ev.taskType}`
+    const agg =
+      this.#evidence.get(key) ||
+      { modelId: ev.modelId, taskType: ev.taskType, approved: 0, corrected: 0, errors: 0, totalCost: 0, costSamples: 0, totalLatency: 0, latencySamples: 0, samples: 0 }
+    agg.samples += 1
+    if (ev.outcome === 'approved') agg.approved += 1
+    else if (ev.outcome === 'corrected') agg.corrected += 1
+    else agg.errors += 1
+    if (typeof ev.cost === 'number') {
+      agg.totalCost += ev.cost
+      agg.costSamples += 1
+    }
+    if (typeof ev.latencyMs === 'number') {
+      agg.totalLatency += ev.latencyMs
+      agg.latencySamples += 1
+    }
+    this.#evidence.set(key, agg)
+    return agg
+  }
+
+  #evidenceView(agg) {
+    if (!agg) {
+      return { modelId: null, taskType: null, samples: 0, approved: 0, corrected: 0, errors: 0, correctionRate: null, avgCost: null, costPerUsefulResult: null, avgLatencyMs: null }
+    }
+    return {
+      modelId: agg.modelId,
+      taskType: agg.taskType,
+      samples: agg.samples,
+      approved: agg.approved,
+      corrected: agg.corrected,
+      errors: agg.errors,
+      correctionRate: agg.approved + agg.corrected > 0 ? agg.corrected / (agg.approved + agg.corrected) : null,
+      avgCost: agg.costSamples ? agg.totalCost / agg.costSamples : null,
+      costPerUsefulResult: agg.costSamples ? agg.totalCost / Math.max(1, agg.approved) : null,
+      avgLatencyMs: agg.latencySamples ? agg.totalLatency / agg.latencySamples : null,
+    }
+  }
+
+  #toolAllowed(agent, toolId) {
+    return agent.tools.includes('*') || agent.tools.includes(toolId)
   }
 
   #modelView(m) {

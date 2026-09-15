@@ -80,18 +80,45 @@ tarifas → `recommended: null` y `limitations: [cost_unknown]`.
 | `agents.setModelPolicy` / `agents.getEffectivePolicy` | Política |
 | `agents.recommendModel` / `agents.resolveModel` | Selección |
 | `agents.recordSelection` / `agents.listSelections` | Registro por ejecución |
+| `tools.register` / `tools.list` | Herramientas ejecutables del host |
+| `agents.executeTool` | Ejecuta una herramienta permitida al agente |
+| `agents.delegate` | Delega en un subagente autorizado |
+| `agents.listExecutions` | Registro de ejecuciones (herramientas y delegaciones) |
+| `models.recordOutcome` / `models.evidence` | Evidencia real por modelo |
 
-## 7. Pruebas
+## 7. Herramientas y subagentes ejecutables
 
-`test/agents.test.js` cubre **F03** (duplicar sin confianza ficticia), **F19**
-(principal/fallback con motivo y versión), **F23** (exclusivo no sustituye),
-**F24** (recomendación comparada), **F25** (reintentos en el costo), **F26**
-(escalamiento auto/manual), **F27/F30** (costo desconocido), **F28** (presupuesto
-agotado), **F29** (editar política crea versión) y **F42** (delegación con modelo
-efectivo propio). Requisitos de capacidad filtran candidatos.
+- **Herramientas**: el host registra `handler(input, ctx)` (síncrono). Un agente
+  solo puede ejecutar lo que declara en `tools` (o `*`). Si no → `FORBIDDEN_TOOL`.
+  Cada ejecución se registra con estado, error y duración.
+- **Subagentes**: `agents.delegate` exige que el padre tenga autorizado el
+  subagente (`subagents`), resuelve el **modelo del hijo con su propia política**,
+  comparte el **presupuesto del padre** (no abre uno nuevo) y ejecuta las
+  herramientas del hijo. Devuelve el modelo efectivo, la versión de política y las
+  ejecuciones. Sin autorización → `FORBIDDEN_SUBAGENT`; sin costo estimable con
+  presupuesto → `needs_decision`; excedido → `BUDGET_EXCEEDED`.
 
-## 8. Fuera de alcance (siguiente)
+## 8. Evidencia real por modelo
 
-- Herramientas y subagentes ejecutables (hoy son declarativos).
-- Persistencia de política en el harness (el gateway ya inyecta el MCP).
-- Casos probados por modelo (evidencia real) más allá de `notes` declaradas.
+`models.recordOutcome` guarda resultados reales (`approved`/`corrected`/`error`)
+con costo y latencia por `(modelo, tipo de tarea)`. `models.evidence` agrega
+conteos, `correctionRate`, `avgCost`, `avgLatencyMs` y **costo por resultado útil**
+(`totalCost / aprobados`, que castiga reintentos y correcciones).
+
+El recomendador usa la evidencia: si hay casos probados, ordena por costo por
+resultado útil (`basis: "evidence"`) y deja de ser provisional; sin evidencia,
+cae a costo estimado y marca `provisional`.
+
+## 9. Fuera de alcance (siguiente)
+
+- Herramientas **asíncronas** (hoy el handler debe ser síncrono; el host puede
+  puentear con `execFileSync`, como el almacén S3).
+- Persistencia de la política dentro del harness (el gateway ya inyecta el MCP).
+
+## 10. Pruebas
+
+`test/agents.test.js` cubre **F03, F19, F23, F24, F25, F26, F27/F30, F28, F29,
+F42** y requisitos de capacidad. `test/agents-exec.test.js` cubre herramientas
+ejecutables (permitida / no permitida / error), delegación (autorizada, no
+autorizada, presupuesto compartido) y evidencia (recomendación basada en casos
+probados, provisional sin evidencia y persistencia en SQLite).

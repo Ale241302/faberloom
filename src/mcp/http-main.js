@@ -13,6 +13,8 @@ const dataDir = path.join(__dirname, '..', '..', 'data')
 const repository = await repositoryFromEnv(process.env, dataDir)
 const service = new SpacesService({ repository, blobStore: blobStoreFromEnv(process.env) })
 const agentsService = new AgentsService({ repository })
+agentsService.registerTool({ id: 'echo', name: 'echo', handler: (input) => input })
+agentsService.registerTool({ id: 'upper', name: 'upper', handler: (input) => ({ text: String((input && input.text) || '').toUpperCase() }) })
 
 startHttp({
   service,

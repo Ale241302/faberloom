@@ -74,6 +74,14 @@ export class SqliteRepository {
         currency TEXT, created_at TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_selections_agent ON agent_selections (agent_id);
+      CREATE TABLE IF NOT EXISTS agent_executions (
+        id TEXT PRIMARY KEY, agent_id TEXT, kind TEXT, tool_id TEXT, subagent_id TEXT,
+        model_id TEXT, status TEXT, cost REAL, duration_ms INTEGER, error TEXT, created_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS model_evidence (
+        id TEXT PRIMARY KEY, model_id TEXT, task_type TEXT, outcome TEXT, cost REAL, latency_ms INTEGER, created_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_evidence_model ON model_evidence (model_id, task_type);
     `)
     this.#ensureColumns('space_links', {
       stored: 'INTEGER NOT NULL DEFAULT 0',
@@ -179,7 +187,32 @@ export class SqliteRepository {
     if (!spaces.length && !links.length && !models.length && !agents.length) return null
     const personalIndex = {}
     for (const s of spaces) if (s.personal) personalIndex[s.ownerId] = s.id
-    return { version: 1, spaces, personalIndex, links, models, agents, selections }
+
+    const executions = this.#db.prepare('SELECT * FROM agent_executions ORDER BY created_at, id').all().map((r) => ({
+      id: r.id,
+      agentId: r.agent_id,
+      kind: r.kind,
+      toolId: r.tool_id,
+      subagentId: r.subagent_id,
+      modelId: r.model_id,
+      status: r.status,
+      cost: r.cost,
+      durationMs: r.duration_ms,
+      error: r.error,
+      createdAt: r.created_at,
+    }))
+
+    const evidence = this.#db.prepare('SELECT * FROM model_evidence ORDER BY created_at, id').all().map((r) => ({
+      id: r.id,
+      modelId: r.model_id,
+      taskType: r.task_type,
+      outcome: r.outcome,
+      cost: r.cost,
+      latencyMs: r.latency_ms,
+      createdAt: r.created_at,
+    }))
+
+    return { version: 1, spaces, personalIndex, links, models, agents, selections, executions, evidence }
   }
 
   // ── Escritura incremental ──────────────────────────────────────────
@@ -338,6 +371,18 @@ export class SqliteRepository {
       .run(s.id, s.agentId, s.taskId ?? null, s.modelId ?? null, s.kind ?? null, s.reason ?? null, s.policyVersion ?? null, s.estimatedCost ?? null, s.currency ?? null, s.createdAt)
   }
 
+  saveExecution(e) {
+    this.#db
+      .prepare('INSERT OR REPLACE INTO agent_executions (id, agent_id, kind, tool_id, subagent_id, model_id, status, cost, duration_ms, error, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(e.id, e.agentId ?? null, e.kind ?? null, e.toolId ?? null, e.subagentId ?? null, e.modelId ?? null, e.status ?? null, e.cost ?? null, e.durationMs ?? null, e.error ?? null, e.createdAt)
+  }
+
+  saveEvidence(ev) {
+    this.#db
+      .prepare('INSERT OR REPLACE INTO model_evidence (id, model_id, task_type, outcome, cost, latency_ms, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .run(ev.id, ev.modelId, ev.taskType ?? null, ev.outcome, ev.cost ?? null, ev.latencyMs ?? null, ev.createdAt)
+  }
+
   // ── Snapshot completo (solo de las secciones presentes) ─────────────
   write(state) {
     this.#tx(() => {
@@ -363,6 +408,14 @@ export class SqliteRepository {
       if (state.selections !== undefined) {
         this.#db.exec('DELETE FROM agent_selections;')
         for (const s of state.selections || []) this.saveSelection(s)
+      }
+      if (state.executions !== undefined) {
+        this.#db.exec('DELETE FROM agent_executions;')
+        for (const e of state.executions || []) this.saveExecution(e)
+      }
+      if (state.evidence !== undefined) {
+        this.#db.exec('DELETE FROM model_evidence;')
+        for (const ev of state.evidence || []) this.saveEvidence(ev)
       }
     })
   }
