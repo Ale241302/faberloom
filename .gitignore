@@ -1,12 +1,15 @@
-# Ignore zip files
-*.zip
-
-# Ignore node_modules
+# Dependencias
 node_modules/
 
-# Ignore OS files
+# Datos locales de FaberLoom (no versionar)
+data/
+.env
+
+# Empaquetados y temporales
+*.zip
+*.tgz
+*.log
+
+# Sistema operativo
 .DS_Store
 Thumbs.db
-
-# Ignore log files
-*.log
