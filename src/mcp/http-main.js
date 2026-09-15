@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { SpacesService } from '../spaces/index.js'
 import { AgentsService } from '../agents/index.js'
 import { RoutinesService } from '../routines/index.js'
+import { BoardService } from '../board/index.js'
 import { repositoryFromEnv } from '../store/from-env.js'
 import { blobStoreFromEnv } from '../store/blob.js'
 import { startHttp } from './http.js'
@@ -45,6 +46,7 @@ startHttp({
   service,
   agentsService,
   routinesService,
+  boardService: new BoardService({ repository }),
   gatewayKey: process.env.FABERLOOM_GATEWAY_KEY || '',
   defaultUserId: process.env.FABERLOOM_USER_ID || 'anon',
   port: Number(process.env.FABERLOOM_PORT || 8090),

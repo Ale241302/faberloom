@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 import { SpacesService } from '../spaces/index.js'
 import { AgentsService } from '../agents/index.js'
 import { RoutinesService } from '../routines/index.js'
+import { BoardService } from '../board/index.js'
 import { repositoryFromEnv } from '../store/from-env.js'
 import { blobStoreFromEnv } from '../store/blob.js'
 import { createMcpServer } from './server.js'
@@ -33,6 +34,7 @@ const server = createMcpServer({
   service,
   agentsService,
   routinesService,
+  boardService: new BoardService({ repository }),
   defaultUserId: process.env.FABERLOOM_USER_ID || 'anon',
 })
 

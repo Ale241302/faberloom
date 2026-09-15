@@ -298,6 +298,55 @@ function mapRoutines(name, args, ctx) {
   }
 }
 
+const BOARD_TOOLS = [
+  {
+    name: 'board_submit',
+    description: 'Envía un resultado a la Mesa para revisión (requiere evidencia).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string' },
+        kind: { type: 'string' },
+        result: { type: 'object' },
+        evidence: {},
+        links: { type: 'array' },
+        executionId: { type: 'string' },
+        spaceId: { type: 'string' },
+      },
+      required: ['title', 'evidence'],
+    },
+  },
+  { name: 'board_list', description: 'Lista elementos de la Mesa.', inputSchema: { type: 'object', properties: { status: { type: 'string' }, spaceId: { type: 'string' }, kind: { type: 'string' } } } },
+  { name: 'board_get', description: 'Detalle de un elemento.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] } },
+  { name: 'board_review', description: 'Revisa la versión exacta: aprobar (no envía) o pedir corrección.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, revision: { type: 'number' }, decision: { type: 'string', enum: ['approve', 'correction'] }, comment: { type: 'string' }, result: { type: 'object' }, evidence: {} }, required: ['itemId', 'revision', 'decision'] } },
+  { name: 'board_request_data', description: 'Marca que faltan datos.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, reason: { type: 'string' } }, required: ['itemId'] } },
+  { name: 'board_mark_stale', description: 'Los datos cambiaron: la aprobación vigente queda obsoleta.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, reason: { type: 'string' } }, required: ['itemId'] } },
+  { name: 'board_revalidate', description: 'Revalida antes del efecto; si cambió, exige nueva revisión.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, changed: { type: 'boolean' }, note: { type: 'string' } }, required: ['itemId', 'changed'] } },
+  { name: 'board_record_effect', description: 'Registra el efecto externo de una versión aprobada (requiere autorización).', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, revision: { type: 'number' }, ref: { type: 'string' }, authorizationRef: { type: 'string' } }, required: ['itemId', 'revision', 'authorizationRef'] } },
+  { name: 'board_reopen', description: 'Reabre un elemento aprobado o completado.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, reason: { type: 'string' } }, required: ['itemId'] } },
+  { name: 'board_fail', description: 'Marca un fallo conservando la evidencia.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, reason: { type: 'string' } }, required: ['itemId'] } },
+]
+
+function mapBoard(name, args, ctx) {
+  const { userId } = ctx
+  switch (name) {
+    case 'board_submit': {
+      const { userId: _u, companyId: _c, ownerId: _o, ...rest } = args
+      return ['board.submit', { ...rest, ownerId: userId }]
+    }
+    case 'board_list': return ['board.list', { ownerId: userId, status: args.status, spaceId: args.spaceId, kind: args.kind }]
+    case 'board_get': return ['board.get', { itemId: args.itemId }]
+    case 'board_review': return ['board.review', { itemId: args.itemId, revision: args.revision, decision: args.decision, comment: args.comment, result: args.result, evidence: args.evidence, userId }]
+    case 'board_request_data': return ['board.requestData', { itemId: args.itemId, reason: args.reason, userId }]
+    case 'board_mark_stale': return ['board.markStale', { itemId: args.itemId, reason: args.reason, userId }]
+    case 'board_revalidate': return ['board.revalidate', { itemId: args.itemId, changed: args.changed, note: args.note }]
+    case 'board_record_effect': return ['board.recordEffect', { itemId: args.itemId, revision: args.revision, ref: args.ref, authorizationRef: args.authorizationRef, userId }]
+    case 'board_reopen': return ['board.reopen', { itemId: args.itemId, reason: args.reason, userId }]
+    case 'board_fail': return ['board.fail', { itemId: args.itemId, reason: args.reason }]
+    default: return null
+  }
+}
+
 function mapTool(name, args, ctx) {
   const { userId, companyId } = ctx
   const common = companyId ? { userId, companyId } : { userId }
@@ -355,12 +404,13 @@ function toolResponse(id, out) {
   return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(out.data) }], isError: false } }
 }
 
-export function createMcpServer({ service, agentsService, routinesService, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
-  if (!service && !agentsService && !routinesService) throw new Error('createMcpServer requiere al menos un servicio')
+export function createMcpServer({ service, agentsService, routinesService, boardService, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
+  if (!service && !agentsService && !routinesService && !boardService) throw new Error('createMcpServer requiere al menos un servicio')
   const tools = [
     ...(service ? SPACES_TOOLS : []),
     ...(agentsService ? AGENTS_TOOLS : []),
     ...(routinesService ? ROUTINES_TOOLS : []),
+    ...(boardService ? BOARD_TOOLS : []),
   ]
 
   function handleMessage(msg) {
@@ -396,6 +446,9 @@ export function createMcpServer({ service, agentsService, routinesService, defau
       } else if (routinesService && name && (name.startsWith('routines_') || name.startsWith('executions_') || name.startsWith('events_') || name.startsWith('sources_') || name.startsWith('dispatcher_'))) {
         svc = routinesService
         mapped = mapRoutines(name, args, ctx)
+      } else if (boardService && name && name.startsWith('board_')) {
+        svc = boardService
+        mapped = mapBoard(name, args, ctx)
       }
       if (!mapped) return rpcError(id, -32602, `herramienta desconocida: ${name}`)
       const [operation, opParams] = mapped

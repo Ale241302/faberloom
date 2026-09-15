@@ -103,6 +103,11 @@ export class SqliteRepository {
       CREATE TABLE IF NOT EXISTS locks (
         name TEXT PRIMARY KEY, owner TEXT, expires_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS board_items (
+        id TEXT PRIMARY KEY, owner_id TEXT, space_id TEXT, status TEXT,
+        revision INTEGER, data TEXT, created_at TEXT, updated_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_board_owner ON board_items (owner_id, status);
     `)
     this.#ensureColumns('space_links', {
       stored: 'INTEGER NOT NULL DEFAULT 0',
@@ -277,7 +282,18 @@ export class SqliteRepository {
 
     const locks = this.#db.prepare('SELECT * FROM locks').all().map((r) => ({ name: r.name, owner: r.owner, expiresAt: r.expires_at }))
 
-    return { version: 1, spaces, personalIndex, links, models, agents, selections, agentExecutions, evidence, routines, runs, effects, sources, locks }
+    const board = this.#db.prepare('SELECT * FROM board_items ORDER BY created_at, id').all().map((r) => ({
+      id: r.id,
+      ownerId: r.owner_id,
+      spaceId: r.space_id,
+      status: r.status,
+      revision: r.revision,
+      ...(r.data ? JSON.parse(r.data) : {}),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }))
+
+    return { version: 1, spaces, personalIndex, links, models, agents, selections, agentExecutions, evidence, routines, runs, effects, sources, locks, board }
   }
 
   // ── Escritura incremental ──────────────────────────────────────────
@@ -502,7 +518,23 @@ export class SqliteRepository {
         this.#db.exec('DELETE FROM locks;')
         for (const l of state.locks || []) this.saveLock(l)
       }
+      if (state.board !== undefined) {
+        this.#db.exec('DELETE FROM board_items;')
+        for (const b of state.board || []) this.saveBoardItem(b)
+      }
     })
+  }
+
+  saveBoardItem(b) {
+    const { id, ownerId, spaceId, status, revision, createdAt, updatedAt, ...data } = b
+    this.#db
+      .prepare(
+        `INSERT INTO board_items (id, owner_id, space_id, status, revision, data, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id, space_id=excluded.space_id, status=excluded.status,
+           revision=excluded.revision, data=excluded.data, created_at=excluded.created_at, updated_at=excluded.updated_at`,
+      )
+      .run(id, ownerId ?? null, spaceId ?? null, status ?? null, revision ?? 0, JSON.stringify(data), createdAt ?? null, updatedAt ?? null)
   }
 
   saveSource(s) {

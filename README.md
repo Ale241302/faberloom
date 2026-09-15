@@ -34,6 +34,8 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
   **disparadores reales** (correo/servicio vía `POST /events`), **fuentes por
   usuario** con token, **puente IMAP** (`npm run bridge`), **migración de versión**
   de una ejecución en curso y **bloqueo de despachador**.
+- **Mesa de trabajo y revisión** (E6): aprobación por versión exacta, aprobar sin
+  efecto, revalidación antes del efecto y reapertura.
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).
