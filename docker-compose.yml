@@ -17,6 +17,9 @@ services:
       FABERLOOM_PORT: "8090"
     volumes:
       - faberloom_data:/data
+      # Segunda copia offsite (fuera del volumen del contenedor): el respaldo se
+      # copia aquí con FABERLOOM_BACKUP_OFFSITE_CMD.
+      - /opt/backups/faberloom:/offsite
     networks:
       - harness-net
       - mwt_default
