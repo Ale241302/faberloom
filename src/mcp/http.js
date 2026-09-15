@@ -24,9 +24,9 @@ function sendJson(res, status, payload, headers = {}) {
   res.end(body)
 }
 
-export function createHttpHandler({ service, agentsService, gatewayKey = '', defaultUserId = 'anon', sessions = new Map() } = {}) {
-  if (!service && !agentsService) throw new Error('createHttpHandler requiere al menos un servicio')
-  const mcp = createMcpServer({ service, agentsService, defaultUserId })
+export function createHttpHandler({ service, agentsService, routinesService, gatewayKey = '', defaultUserId = 'anon', sessions = new Map() } = {}) {
+  if (!service && !agentsService && !routinesService) throw new Error('createHttpHandler requiere al menos un servicio')
+  const mcp = createMcpServer({ service, agentsService, routinesService, defaultUserId })
 
   const readBody = (req) =>
     new Promise((resolve, reject) => {
@@ -103,8 +103,8 @@ export function createHttpHandler({ service, agentsService, gatewayKey = '', def
   }
 }
 
-export function startHttp({ service, agentsService, gatewayKey, defaultUserId, port = Number(process.env.FABERLOOM_PORT || 8090), host = '0.0.0.0' } = {}) {
-  const handler = createHttpHandler({ service, agentsService, gatewayKey, defaultUserId })
+export function startHttp({ service, agentsService, routinesService, gatewayKey, defaultUserId, port = Number(process.env.FABERLOOM_PORT || 8090), host = '0.0.0.0' } = {}) {
+  const handler = createHttpHandler({ service, agentsService, routinesService, gatewayKey, defaultUserId })
   const server = http.createServer((req, res) => {
     Promise.resolve(handler(req, res)).catch((e) => {
       process.stderr.write(`[faberloom-mcp-http] error: ${e?.message}\n`)

@@ -29,6 +29,8 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
 - **Herramientas y subagentes ejecutables** y **evidencia real por modelo**
   (`executeTool`, `delegate`, `recordOutcome`/`evidence`), con handlers síncronos
   o asíncronos.
+- **Rutinas y ejecución persistente** (E5): rutinas versionadas, idempotencia,
+  esperas con revalidación, reconciliación de timeouts y despachador `tick`.
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).

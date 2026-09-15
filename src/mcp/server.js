@@ -225,6 +225,65 @@ function mapAgents(name, args, ctx) {
   }
 }
 
+const ROUTINES_TOOLS = [
+  {
+    name: 'routines_create',
+    description: 'Crea una rutina (borrador) con disparadores, pasos y política de fallos.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        intent: { type: 'string' },
+        spaceId: { type: 'string' },
+        triggers: { type: 'array' },
+        inputs: { type: 'array' },
+        steps: { type: 'array' },
+        expectedResult: { type: 'string' },
+        permissions: { type: 'array', items: { type: 'string' } },
+        failurePolicy: { type: 'object' },
+      },
+      required: ['name'],
+    },
+  },
+  { name: 'routines_get', description: 'Detalle de una rutina.', inputSchema: { type: 'object', properties: { routineId: { type: 'string' } }, required: ['routineId'] } },
+  { name: 'routines_list', description: 'Lista rutinas.', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, ownerId: { type: 'string' }, status: { type: 'string' } } } },
+  { name: 'routines_update', description: 'Edita una rutina (nueva versión).', inputSchema: { type: 'object', properties: { routineId: { type: 'string' }, patch: { type: 'object' } }, required: ['routineId'] } },
+  { name: 'routines_validate', description: 'Valida pasos, dependencias y capacidades.', inputSchema: { type: 'object', properties: { routineId: { type: 'string' } }, required: ['routineId'] } },
+  { name: 'routines_activate', description: 'Activa una rutina validada.', inputSchema: { type: 'object', properties: { routineId: { type: 'string' } }, required: ['routineId'] } },
+  { name: 'routines_pause', description: 'Pausa una rutina.', inputSchema: { type: 'object', properties: { routineId: { type: 'string' } }, required: ['routineId'] } },
+  { name: 'executions_start', description: 'Inicia una ejecución (idempotente por clave).', inputSchema: { type: 'object', properties: { routineId: { type: 'string' }, trigger: { type: 'object' }, context: { type: 'object' }, idempotencyKey: { type: 'string' }, sources: { type: 'array' } }, required: ['routineId'] } },
+  { name: 'executions_get', description: 'Detalle de una ejecución.', inputSchema: { type: 'object', properties: { executionId: { type: 'string' } }, required: ['executionId'] } },
+  { name: 'executions_list', description: 'Lista ejecuciones.', inputSchema: { type: 'object', properties: { status: { type: 'string' }, routineId: { type: 'string' } } } },
+  { name: 'executions_advance', description: 'Avanza una ejecución.', inputSchema: { type: 'object', properties: { executionId: { type: 'string' } }, required: ['executionId'] } },
+  { name: 'executions_resume', description: 'Reanuda una espera (evento).', inputSchema: { type: 'object', properties: { executionId: { type: 'string' }, event: { type: 'object' } }, required: ['executionId'] } },
+  { name: 'executions_tick', description: 'Despachador: reanuda esperas por evento o tiempo.', inputSchema: { type: 'object', properties: { now: { type: 'string' }, events: { type: 'array' } } } },
+  { name: 'executions_effects', description: 'Efectos registrados de una ejecución.', inputSchema: { type: 'object', properties: { executionId: { type: 'string' } } } },
+]
+
+function mapRoutines(name, args, ctx) {
+  const { userId } = ctx
+  switch (name) {
+    case 'routines_create': {
+      const { userId: _u, companyId: _c, ownerId: _o, ...rest } = args
+      return ['routines.create', { ...rest, ownerId: userId }]
+    }
+    case 'routines_get': return ['routines.get', { routineId: args.routineId }]
+    case 'routines_list': return ['routines.list', { spaceId: args.spaceId, ownerId: args.ownerId, status: args.status }]
+    case 'routines_update': return ['routines.update', { routineId: args.routineId, patch: args.patch || args }]
+    case 'routines_validate': return ['routines.validate', { routineId: args.routineId }]
+    case 'routines_activate': return ['routines.activate', { routineId: args.routineId }]
+    case 'routines_pause': return ['routines.pause', { routineId: args.routineId }]
+    case 'executions_start': return ['executions.start', { routineId: args.routineId, trigger: args.trigger, context: args.context || {}, idempotencyKey: args.idempotencyKey || null, sources: args.sources || [] }]
+    case 'executions_get': return ['executions.get', { executionId: args.executionId }]
+    case 'executions_list': return ['executions.list', { status: args.status, routineId: args.routineId }]
+    case 'executions_advance': return ['executions.advance', { executionId: args.executionId }]
+    case 'executions_resume': return ['executions.resume', { executionId: args.executionId, event: args.event }]
+    case 'executions_tick': return ['executions.tick', { now: args.now, events: args.events || [] }]
+    case 'executions_effects': return ['executions.effects', { executionId: args.executionId }]
+    default: return null
+  }
+}
+
 function mapTool(name, args, ctx) {
   const { userId, companyId } = ctx
   const common = companyId ? { userId, companyId } : { userId }
@@ -282,9 +341,13 @@ function toolResponse(id, out) {
   return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(out.data) }], isError: false } }
 }
 
-export function createMcpServer({ service, agentsService, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
-  if (!service && !agentsService) throw new Error('createMcpServer requiere al menos un servicio')
-  const tools = [...(service ? SPACES_TOOLS : []), ...(agentsService ? AGENTS_TOOLS : [])]
+export function createMcpServer({ service, agentsService, routinesService, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
+  if (!service && !agentsService && !routinesService) throw new Error('createMcpServer requiere al menos un servicio')
+  const tools = [
+    ...(service ? SPACES_TOOLS : []),
+    ...(agentsService ? AGENTS_TOOLS : []),
+    ...(routinesService ? ROUTINES_TOOLS : []),
+  ]
 
   function handleMessage(msg) {
     const { id, method, params } = msg || {}
@@ -316,6 +379,9 @@ export function createMcpServer({ service, agentsService, defaultUserId = proces
       } else if (agentsService && name && (name.startsWith('models_') || name.startsWith('templates_') || name.startsWith('agents_') || name.startsWith('tools_'))) {
         svc = agentsService
         mapped = mapAgents(name, args, ctx)
+      } else if (routinesService && name && (name.startsWith('routines_') || name.startsWith('executions_'))) {
+        svc = routinesService
+        mapped = mapRoutines(name, args, ctx)
       }
       if (!mapped) return rpcError(id, -32602, `herramienta desconocida: ${name}`)
       const [operation, opParams] = mapped

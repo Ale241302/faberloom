@@ -4,6 +4,7 @@ import { PassThrough } from 'node:stream'
 
 import { SpacesService } from '../src/spaces/index.js'
 import { AgentsService } from '../src/agents/index.js'
+import { RoutinesService } from '../src/routines/index.js'
 import { createMcpServer } from '../src/mcp/server.js'
 
 const fixedNow = () => '2026-09-15T00:00:00.000Z'
@@ -88,6 +89,26 @@ test('MCP: operación asíncrona se espera y resuelve', async () => {
   assert.equal(typeof pending.then, 'function')
   const res = await pending
   assert.equal(JSON.parse(res.result.content[0].text).output.text, 'HI')
+})
+
+test('MCP: expone Rutinas y ejecuta un recorrido', () => {
+  const service = new SpacesService({ idGen: seq('sp'), now: fixedNow })
+  const agentsService = new AgentsService({ idGen: seq('ag'), now: fixedNow })
+  const routinesService = new RoutinesService({ idGen: seq('rt'), now: fixedNow })
+  routinesService.registerStepHandler('noop', () => ({ output: 'ok' }))
+  const mcp = createMcpServer({ service, agentsService, routinesService, defaultUserId: 'u1' })
+
+  const names = mcp.handleMessage({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }).result.tools.map((t) => t.name)
+  assert.ok(names.includes('routines_create'))
+  assert.ok(names.includes('executions_start'))
+
+  const created = mcp.handleMessage({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'routines_create', arguments: { name: 'R', steps: [{ id: 'a', type: 'noop' }] } } })
+  const routine = JSON.parse(created.result.content[0].text)
+  mcp.handleMessage({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'routines_activate', arguments: { routineId: routine.id } } })
+  const started = mcp.handleMessage({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'executions_start', arguments: { routineId: routine.id } } })
+  const ex = JSON.parse(started.result.content[0].text).execution
+  const advanced = mcp.handleMessage({ jsonrpc: '2.0', id: 5, method: 'tools/call', params: { name: 'executions_advance', arguments: { executionId: ex.id } } })
+  assert.equal(JSON.parse(advanced.result.content[0].text).status, 'completed')
 })
 
 test('MCP: serveStdio responde una línea JSON-RPC', async () => {

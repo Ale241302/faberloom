@@ -82,6 +82,19 @@ export class SqliteRepository {
         id TEXT PRIMARY KEY, model_id TEXT, task_type TEXT, outcome TEXT, cost REAL, latency_ms INTEGER, created_at TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_evidence_model ON model_evidence (model_id, task_type);
+      CREATE TABLE IF NOT EXISTS routines (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, intent TEXT, owner_id TEXT, space_id TEXT,
+        version INTEGER NOT NULL DEFAULT 1, status TEXT NOT NULL DEFAULT 'draft',
+        data TEXT, created_at TEXT, updated_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS executions (
+        id TEXT PRIMARY KEY, routine_id TEXT, routine_version INTEGER, status TEXT,
+        idempotency_key TEXT, data TEXT, created_at TEXT, updated_at TEXT, finished_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_executions_idem ON executions (idempotency_key);
+      CREATE TABLE IF NOT EXISTS effects (
+        key TEXT PRIMARY KEY, execution_id TEXT, step_id TEXT, ref TEXT, cancelled INTEGER NOT NULL DEFAULT 0, created_at TEXT
+      );
     `)
     this.#ensureColumns('space_links', {
       stored: 'INTEGER NOT NULL DEFAULT 0',
@@ -184,11 +197,10 @@ export class SqliteRepository {
       createdAt: r.created_at,
     }))
 
-    if (!spaces.length && !links.length && !models.length && !agents.length) return null
     const personalIndex = {}
     for (const s of spaces) if (s.personal) personalIndex[s.ownerId] = s.id
 
-    const executions = this.#db.prepare('SELECT * FROM agent_executions ORDER BY created_at, id').all().map((r) => ({
+    const agentExecutions = this.#db.prepare('SELECT * FROM agent_executions ORDER BY created_at, id').all().map((r) => ({
       id: r.id,
       agentId: r.agent_id,
       kind: r.kind,
@@ -212,7 +224,41 @@ export class SqliteRepository {
       createdAt: r.created_at,
     }))
 
-    return { version: 1, spaces, personalIndex, links, models, agents, selections, executions, evidence }
+    const routines = this.#db.prepare('SELECT * FROM routines ORDER BY name').all().map((r) => ({
+      id: r.id,
+      name: r.name,
+      intent: r.intent,
+      ownerId: r.owner_id,
+      spaceId: r.space_id,
+      version: r.version,
+      status: r.status,
+      ...(r.data ? JSON.parse(r.data) : {}),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }))
+
+    const runs = this.#db.prepare('SELECT * FROM executions ORDER BY created_at, id').all().map((r) => ({
+      id: r.id,
+      routineId: r.routine_id,
+      routineVersion: r.routine_version,
+      status: r.status,
+      idempotencyKey: r.idempotency_key,
+      ...(r.data ? JSON.parse(r.data) : {}),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      finishedAt: r.finished_at,
+    }))
+
+    const effects = this.#db.prepare('SELECT * FROM effects ORDER BY created_at, key').all().map((r) => ({
+      key: r.key,
+      executionId: r.execution_id,
+      stepId: r.step_id,
+      ref: r.ref,
+      cancelled: !!r.cancelled,
+      createdAt: r.created_at,
+    }))
+
+    return { version: 1, spaces, personalIndex, links, models, agents, selections, agentExecutions, evidence, routines, runs, effects }
   }
 
   // ── Escritura incremental ──────────────────────────────────────────
@@ -409,15 +455,59 @@ export class SqliteRepository {
         this.#db.exec('DELETE FROM agent_selections;')
         for (const s of state.selections || []) this.saveSelection(s)
       }
-      if (state.executions !== undefined) {
+      if (state.agentExecutions !== undefined) {
         this.#db.exec('DELETE FROM agent_executions;')
-        for (const e of state.executions || []) this.saveExecution(e)
+        for (const e of state.agentExecutions || []) this.saveExecution(e)
       }
       if (state.evidence !== undefined) {
         this.#db.exec('DELETE FROM model_evidence;')
         for (const ev of state.evidence || []) this.saveEvidence(ev)
       }
+      if (state.routines !== undefined) {
+        this.#db.exec('DELETE FROM routines;')
+        for (const r of state.routines || []) this.saveRoutine(r)
+      }
+      if (state.runs !== undefined) {
+        this.#db.exec('DELETE FROM executions;')
+        for (const run of state.runs || []) this.saveRun(run)
+      }
+      if (state.effects !== undefined) {
+        this.#db.exec('DELETE FROM effects;')
+        for (const ef of state.effects || []) this.saveEffect(ef)
+      }
     })
+  }
+
+  saveRoutine(r) {
+    const { id, name, intent, ownerId, spaceId, version, status, createdAt, updatedAt, ...data } = r
+    this.#db
+      .prepare(
+        `INSERT INTO routines (id, name, intent, owner_id, space_id, version, status, data, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, intent=excluded.intent, owner_id=excluded.owner_id,
+           space_id=excluded.space_id, version=excluded.version, status=excluded.status, data=excluded.data,
+           created_at=excluded.created_at, updated_at=excluded.updated_at`,
+      )
+      .run(id, name, intent ?? null, ownerId ?? null, spaceId ?? null, version, status, JSON.stringify(data), createdAt ?? null, updatedAt ?? null)
+  }
+
+  saveRun(run) {
+    const { id, routineId, routineVersion, status, idempotencyKey, createdAt, updatedAt, finishedAt, ...data } = run
+    this.#db
+      .prepare(
+        `INSERT INTO executions (id, routine_id, routine_version, status, idempotency_key, data, created_at, updated_at, finished_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET routine_id=excluded.routine_id, routine_version=excluded.routine_version,
+           status=excluded.status, idempotency_key=excluded.idempotency_key, data=excluded.data,
+           created_at=excluded.created_at, updated_at=excluded.updated_at, finished_at=excluded.finished_at`,
+      )
+      .run(id, routineId ?? null, routineVersion ?? null, status ?? null, idempotencyKey ?? null, JSON.stringify(data), createdAt ?? null, updatedAt ?? null, finishedAt ?? null)
+  }
+
+  saveEffect(ef) {
+    this.#db
+      .prepare('INSERT INTO effects (key, execution_id, step_id, ref, cancelled, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(key) DO UPDATE SET ref=excluded.ref, cancelled=excluded.cancelled')
+      .run(ef.key, ef.executionId ?? null, ef.stepId ?? null, ef.ref ?? null, ef.cancelled ? 1 : 0, ef.createdAt ?? null)
   }
 
   close() {

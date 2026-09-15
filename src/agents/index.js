@@ -82,7 +82,7 @@ export class AgentsService {
         for (const m of state.models || []) this.#models.set(m.id, m)
         for (const a of state.agents || []) this.#agents.set(a.id, a)
         this.#selections = [...(state.selections || [])]
-        this.#executions = [...(state.executions || [])]
+        this.#executions = [...(state.agentExecutions || [])]
         this.#evidenceRecords = [...(state.evidence || [])]
         for (const ev of this.#evidenceRecords) this.#applyEvidence(ev)
       }
@@ -700,7 +700,7 @@ export class AgentsService {
 
   #persistExecution(e) {
     if (this.#repo && typeof this.#repo.saveExecution === 'function') this.#repo.saveExecution(e)
-    else if (this.#repo && typeof this.#repo.write === 'function') this.#repo.write({ executions: [...this.#executions] })
+    else if (this.#repo && typeof this.#repo.write === 'function') this.#repo.write({ agentExecutions: [...this.#executions] })
   }
 
   #persistEvidence(ev) {
