@@ -5,6 +5,8 @@ import { SpacesService } from '../spaces/index.js'
 import { AgentsService } from '../agents/index.js'
 import { RoutinesService } from '../routines/index.js'
 import { BoardService } from '../board/index.js'
+import { AccessService } from '../access/index.js'
+import { LearningService } from '../learning/index.js'
 import { repositoryFromEnv } from '../store/from-env.js'
 import { blobStoreFromEnv } from '../store/blob.js'
 import { startHttp } from './http.js'
@@ -20,7 +22,14 @@ agentsService.registerTool({ id: 'echo', name: 'echo', handler: (input) => input
 agentsService.registerTool({ id: 'upper', name: 'upper', handler: (input) => ({ text: String((input && input.text) || '').toUpperCase() }) })
 agentsService.registerTool({ id: 'async_upper', name: 'async_upper', handler: async (input) => ({ text: String((input && input.text) || '').toUpperCase() }) })
 
-const boardService = new BoardService({ repository, blobStore })
+const accessService = new AccessService({ repository })
+const learningService = new LearningService({ repository })
+const boardService = new BoardService({
+  repository,
+  blobStore,
+  // Aprobar en la Mesa NO concede permiso: el efecto valida la concesión.
+  authorize: (ref, ctx) => accessService.check({ grantId: ref, action: ctx.action, context: ctx.context }),
+})
 
 const routinesService = new RoutinesService({
   repository,
@@ -57,6 +66,8 @@ startHttp({
   agentsService,
   routinesService,
   boardService,
+  accessService,
+  learningService,
   gatewayKey: process.env.FABERLOOM_GATEWAY_KEY || '',
   defaultUserId: process.env.FABERLOOM_USER_ID || 'anon',
   port: Number(process.env.FABERLOOM_PORT || 8090),

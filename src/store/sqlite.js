@@ -108,6 +108,19 @@ export class SqliteRepository {
         revision INTEGER, data TEXT, created_at TEXT, updated_at TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_board_owner ON board_items (owner_id, status);
+      CREATE TABLE IF NOT EXISTS teachings (
+        id TEXT PRIMARY KEY, owner_id TEXT, status TEXT, kind TEXT, version INTEGER, data TEXT, created_at TEXT, updated_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS teaching_usages (
+        id TEXT PRIMARY KEY, teaching_id TEXT, version INTEGER, data TEXT, created_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_usages_teaching ON teaching_usages (teaching_id);
+      CREATE TABLE IF NOT EXISTS outcomes (
+        id TEXT PRIMARY KEY, owner_id TEXT, agent_id TEXT, space_id TEXT, task_type TEXT, outcome TEXT, data TEXT, created_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS grants (
+        id TEXT PRIMARY KEY, owner_id TEXT, agent_id TEXT, action TEXT, status TEXT, data TEXT, created_at TEXT, updated_at TEXT
+      );
     `)
     this.#ensureColumns('space_links', {
       stored: 'INTEGER NOT NULL DEFAULT 0',
@@ -293,7 +306,48 @@ export class SqliteRepository {
       updatedAt: r.updated_at,
     }))
 
-    return { version: 1, spaces, personalIndex, links, models, agents, selections, agentExecutions, evidence, routines, runs, effects, sources, locks, board }
+    const teachings = this.#db.prepare('SELECT * FROM teachings ORDER BY created_at, id').all().map((r) => ({
+      id: r.id,
+      ownerId: r.owner_id,
+      status: r.status,
+      kind: r.kind,
+      version: r.version,
+      ...(r.data ? JSON.parse(r.data) : {}),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }))
+
+    const teachingUsages = this.#db.prepare('SELECT * FROM teaching_usages ORDER BY created_at, id').all().map((r) => ({
+      id: r.id,
+      teachingId: r.teaching_id,
+      version: r.version,
+      ...(r.data ? JSON.parse(r.data) : {}),
+      createdAt: r.created_at,
+    }))
+
+    const outcomes = this.#db.prepare('SELECT * FROM outcomes ORDER BY created_at, id').all().map((r) => ({
+      id: r.id,
+      ownerId: r.owner_id,
+      agentId: r.agent_id,
+      spaceId: r.space_id,
+      taskType: r.task_type,
+      outcome: r.outcome,
+      ...(r.data ? JSON.parse(r.data) : {}),
+      createdAt: r.created_at,
+    }))
+
+    const grants = this.#db.prepare('SELECT * FROM grants ORDER BY created_at, id').all().map((r) => ({
+      id: r.id,
+      ownerId: r.owner_id,
+      agentId: r.agent_id,
+      action: r.action,
+      status: r.status,
+      ...(r.data ? JSON.parse(r.data) : {}),
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }))
+
+    return { version: 1, spaces, personalIndex, links, models, agents, selections, agentExecutions, evidence, routines, runs, effects, sources, locks, board, teachings, teachingUsages, outcomes, grants }
   }
 
   // ── Escritura incremental ──────────────────────────────────────────
@@ -522,7 +576,61 @@ export class SqliteRepository {
         this.#db.exec('DELETE FROM board_items;')
         for (const b of state.board || []) this.saveBoardItem(b)
       }
+      if (state.teachings !== undefined) {
+        this.#db.exec('DELETE FROM teachings;')
+        for (const t of state.teachings || []) this.saveTeaching(t)
+      }
+      if (state.teachingUsages !== undefined) {
+        this.#db.exec('DELETE FROM teaching_usages;')
+        for (const u of state.teachingUsages || []) this.saveUsage(u)
+      }
+      if (state.outcomes !== undefined) {
+        this.#db.exec('DELETE FROM outcomes;')
+        for (const o of state.outcomes || []) this.saveOutcome(o)
+      }
+      if (state.grants !== undefined) {
+        this.#db.exec('DELETE FROM grants;')
+        for (const g of state.grants || []) this.saveGrant(g)
+      }
     })
+  }
+
+  saveTeaching(t) {
+    const { id, ownerId, status, kind, version, createdAt, updatedAt, ...data } = t
+    this.#db
+      .prepare(
+        `INSERT INTO teachings (id, owner_id, status, kind, version, data, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id, status=excluded.status, kind=excluded.kind,
+           version=excluded.version, data=excluded.data, created_at=excluded.created_at, updated_at=excluded.updated_at`,
+      )
+      .run(id, ownerId ?? null, status ?? null, kind ?? null, version ?? 0, JSON.stringify(data), createdAt ?? null, updatedAt ?? null)
+  }
+
+  saveUsage(u) {
+    const { id, teachingId, version, createdAt, ...data } = u
+    this.#db
+      .prepare('INSERT OR REPLACE INTO teaching_usages (id, teaching_id, version, data, created_at) VALUES (?, ?, ?, ?, ?)')
+      .run(id, teachingId ?? null, version ?? null, JSON.stringify(data), createdAt ?? null)
+  }
+
+  saveOutcome(o) {
+    const { id, ownerId, agentId, spaceId, taskType, outcome, createdAt, ...data } = o
+    this.#db
+      .prepare('INSERT OR REPLACE INTO outcomes (id, owner_id, agent_id, space_id, task_type, outcome, data, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(id, ownerId ?? null, agentId ?? null, spaceId ?? null, taskType ?? null, outcome ?? null, JSON.stringify(data), createdAt ?? null)
+  }
+
+  saveGrant(g) {
+    const { id, ownerId, agentId, action, status, createdAt, updatedAt, ...data } = g
+    this.#db
+      .prepare(
+        `INSERT INTO grants (id, owner_id, agent_id, action, status, data, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET owner_id=excluded.owner_id, agent_id=excluded.agent_id, action=excluded.action,
+           status=excluded.status, data=excluded.data, created_at=excluded.created_at, updated_at=excluded.updated_at`,
+      )
+      .run(id, ownerId ?? null, agentId ?? null, action ?? null, status ?? null, JSON.stringify(data), createdAt ?? null, updatedAt ?? null)
   }
 
   saveBoardItem(b) {

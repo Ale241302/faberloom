@@ -350,6 +350,66 @@ function mapBoard(name, args, ctx) {
   }
 }
 
+const ACCESS_TOOLS = [
+  { name: 'access_grant', description: 'Concede autonomía por acción, agente y contexto.', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, action: { type: 'string' }, context: { type: 'object' }, expiresAt: { type: 'string' }, maxUses: { type: 'number' }, reason: { type: 'string' } }, required: ['action'] } },
+  { name: 'access_revoke', description: 'Revoca una concesión.', inputSchema: { type: 'object', properties: { grantId: { type: 'string' }, reason: { type: 'string' } }, required: ['grantId'] } },
+  { name: 'access_list', description: 'Lista concesiones.', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, action: { type: 'string' }, status: { type: 'string' } } } },
+  { name: 'access_check', description: 'Comprueba una concesión antes de un efecto.', inputSchema: { type: 'object', properties: { grantId: { type: 'string' }, agentId: { type: 'string' }, action: { type: 'string' }, context: { type: 'object' } }, required: ['action'] } },
+  { name: 'access_consume', description: 'Consume un uso de la concesión.', inputSchema: { type: 'object', properties: { grantId: { type: 'string' } }, required: ['grantId'] } },
+]
+
+function mapAccess(name, args, ctx) {
+  const { userId } = ctx
+  switch (name) {
+    case 'access_grant': {
+      const { userId: _u, companyId: _c, ownerId: _o, ...rest } = args
+      return ['access.grant', { ...rest, ownerId: userId, userId }]
+    }
+    case 'access_revoke': return ['access.revoke', { grantId: args.grantId, reason: args.reason, userId }]
+    case 'access_list': return ['access.list', { ownerId: userId, agentId: args.agentId, action: args.action, status: args.status }]
+    case 'access_check': return ['access.check', { grantId: args.grantId, agentId: args.agentId, action: args.action, context: args.context }]
+    case 'access_consume': return ['access.consume', { grantId: args.grantId }]
+    default: return null
+  }
+}
+
+const LEARNING_TOOLS = [
+  { name: 'learning_propose', description: 'Propone una enseñanza (candidata).', inputSchema: { type: 'object', properties: { scope: { type: 'object' }, kind: { type: 'string', enum: ['error', 'preference', 'requirement'] }, text: { type: 'string' }, provenance: { type: 'object' } }, required: ['text'] } },
+  { name: 'learning_activate', description: 'Activa una enseñanza.', inputSchema: { type: 'object', properties: { teachingId: { type: 'string' } }, required: ['teachingId'] } },
+  { name: 'learning_edit', description: 'Edita una enseñanza (nueva versión).', inputSchema: { type: 'object', properties: { teachingId: { type: 'string' }, text: { type: 'string' } }, required: ['teachingId', 'text'] } },
+  { name: 'learning_revoke', description: 'Revoca una enseñanza.', inputSchema: { type: 'object', properties: { teachingId: { type: 'string' }, reason: { type: 'string' } }, required: ['teachingId'] } },
+  { name: 'learning_retrieve', description: 'Recupera enseñanzas activas del alcance (registra uso).', inputSchema: { type: 'object', properties: { scope: { type: 'object' }, usageContext: { type: 'object' } } } },
+  { name: 'learning_list', description: 'Lista enseñanzas.', inputSchema: { type: 'object', properties: { scope: { type: 'object' }, status: { type: 'string' }, kind: { type: 'string' } } } },
+  { name: 'learning_usages', description: 'Usos registrados de una enseñanza.', inputSchema: { type: 'object', properties: { teachingId: { type: 'string' } }, required: ['teachingId'] } },
+  { name: 'learning_record_outcome', description: 'Registra el resultado de un caso (desempeño contextual).', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, spaceId: { type: 'string' }, taskType: { type: 'string' }, outcome: { type: 'string', enum: ['approved', 'corrected', 'error', 'requirement_change'] }, lateError: { type: 'boolean' }, reviewMs: { type: 'number' } }, required: ['outcome'] } },
+  { name: 'learning_performance', description: 'Desempeño agregado (sin confianza inventada).', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, spaceId: { type: 'string' }, taskType: { type: 'string' } } } },
+  { name: 'learning_record_late_error', description: 'Error posterior: nueva enseñanza vinculada al caso.', inputSchema: { type: 'object', properties: { scope: { type: 'object' }, text: { type: 'string' }, provenance: { type: 'object' } }, required: ['text'] } },
+  { name: 'learning_export_scope', description: 'Exporta el conocimiento de un alcance (con versiones).', inputSchema: { type: 'object', properties: { scope: { type: 'object' } } } },
+  { name: 'learning_import_records', description: 'Importa conocimiento conservando versiones (no restaura permisos).', inputSchema: { type: 'object', properties: { records: { type: 'array' } } } },
+]
+
+function mapLearning(name, args, ctx) {
+  const { userId } = ctx
+  switch (name) {
+    case 'learning_propose': {
+      const { userId: _u, companyId: _c, ownerId: _o, ...rest } = args
+      return ['learning.propose', { ...rest, ownerId: userId }]
+    }
+    case 'learning_activate': return ['learning.activate', { teachingId: args.teachingId, userId }]
+    case 'learning_edit': return ['learning.edit', { teachingId: args.teachingId, text: args.text, userId }]
+    case 'learning_revoke': return ['learning.revoke', { teachingId: args.teachingId, reason: args.reason, userId }]
+    case 'learning_retrieve': return ['learning.retrieve', { ownerId: userId, scope: args.scope || {}, usageContext: args.usageContext || {} }]
+    case 'learning_list': return ['learning.list', { ownerId: userId, scope: args.scope, status: args.status, kind: args.kind }]
+    case 'learning_usages': return ['learning.usages', { teachingId: args.teachingId }]
+    case 'learning_record_outcome': return ['learning.recordOutcome', { ownerId: userId, agentId: args.agentId, spaceId: args.spaceId, taskType: args.taskType, outcome: args.outcome, lateError: args.lateError, reviewMs: args.reviewMs }]
+    case 'learning_performance': return ['learning.performance', { agentId: args.agentId, spaceId: args.spaceId, taskType: args.taskType }]
+    case 'learning_record_late_error': return ['learning.recordLateError', { ownerId: userId, scope: args.scope || {}, text: args.text, provenance: args.provenance || {} }]
+    case 'learning_export_scope': return ['learning.exportScope', { ownerId: userId, scope: args.scope || {} }]
+    case 'learning_import_records': return ['learning.importRecords', { ownerId: userId, records: args.records || [] }]
+    default: return null
+  }
+}
+
 function mapTool(name, args, ctx) {
   const { userId, companyId } = ctx
   const common = companyId ? { userId, companyId } : { userId }
@@ -407,13 +467,15 @@ function toolResponse(id, out) {
   return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(out.data) }], isError: false } }
 }
 
-export function createMcpServer({ service, agentsService, routinesService, boardService, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
-  if (!service && !agentsService && !routinesService && !boardService) throw new Error('createMcpServer requiere al menos un servicio')
+export function createMcpServer({ service, agentsService, routinesService, boardService, accessService, learningService, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
+  if (!service && !agentsService && !routinesService && !boardService && !accessService && !learningService) throw new Error('createMcpServer requiere al menos un servicio')
   const tools = [
     ...(service ? SPACES_TOOLS : []),
     ...(agentsService ? AGENTS_TOOLS : []),
     ...(routinesService ? ROUTINES_TOOLS : []),
     ...(boardService ? BOARD_TOOLS : []),
+    ...(accessService ? ACCESS_TOOLS : []),
+    ...(learningService ? LEARNING_TOOLS : []),
   ]
 
   function handleMessage(msg) {
@@ -452,6 +514,12 @@ export function createMcpServer({ service, agentsService, routinesService, board
       } else if (boardService && name && name.startsWith('board_')) {
         svc = boardService
         mapped = mapBoard(name, args, ctx)
+      } else if (accessService && name && name.startsWith('access_')) {
+        svc = accessService
+        mapped = mapAccess(name, args, ctx)
+      } else if (learningService && name && name.startsWith('learning_')) {
+        svc = learningService
+        mapped = mapLearning(name, args, ctx)
       }
       if (!mapped) return rpcError(id, -32602, `herramienta desconocida: ${name}`)
       const [operation, opParams] = mapped

@@ -32,12 +32,14 @@ export class BoardService {
   #now
   #repo
   #blob
+  #authorize
 
-  constructor({ idGen, now, repository, blobStore } = {}) {
+  constructor({ idGen, now, repository, blobStore, authorize = null } = {}) {
     this.#idGen = idGen ?? (() => randomUUID())
     this.#now = now ?? (() => new Date().toISOString())
     this.#repo = repository ?? null
     this.#blob = blobStore ?? null
+    this.#authorize = authorize
     if (this.#repo && typeof this.#repo.read === 'function') {
       const state = this.#repo.read()
       for (const b of (state && state.board) || []) this.#items.set(b.id, b)
@@ -194,6 +196,12 @@ export class BoardService {
     if (revision !== item.revision) fail('STALE_REVISION', `la revisión ${revision} no es la vigente (${item.revision})`)
     if (item.stale) fail('REVALIDATION_REQUIRED', 'los datos cambiaron; revalida antes del efecto')
     if (!authorizationRef) fail('NO_AUTHORIZATION', 'el efecto requiere una autorización explícita')
+    // La autonomía es un módulo aparte: aprobar en la Mesa no concede permiso.
+    if (this.#authorize) {
+      const verdict = this.#authorize(authorizationRef, { item: this.#view(item), action: 'board.effect', context: { spaceId: item.spaceId, itemId: item.id, kind: item.kind } })
+      const allowed = verdict === true || (verdict && verdict.allowed === true)
+      if (!allowed) fail('NO_AUTHORIZATION', (verdict && verdict.reason) || 'la autorización no es válida o está fuera de contexto')
+    }
     const effect = { revision, ref, at: this.#now(), by: userId ?? null, authorizationRef }
     item.effects.push(effect)
     item.status = 'completed'
