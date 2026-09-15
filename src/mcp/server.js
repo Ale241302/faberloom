@@ -310,6 +310,7 @@ const BOARD_TOOLS = [
         result: { type: 'object' },
         evidence: {},
         links: { type: 'array' },
+        document: { type: 'object', properties: { content: { type: 'string' }, fileName: { type: 'string' }, mediaType: { type: 'string' }, encoding: { type: 'string', enum: ['base64', 'utf8'] } } },
         executionId: { type: 'string' },
         spaceId: { type: 'string' },
       },
@@ -318,13 +319,14 @@ const BOARD_TOOLS = [
   },
   { name: 'board_list', description: 'Lista elementos de la Mesa.', inputSchema: { type: 'object', properties: { status: { type: 'string' }, spaceId: { type: 'string' }, kind: { type: 'string' } } } },
   { name: 'board_get', description: 'Detalle de un elemento.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] } },
-  { name: 'board_review', description: 'Revisa la versión exacta: aprobar (no envía) o pedir corrección.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, revision: { type: 'number' }, decision: { type: 'string', enum: ['approve', 'correction'] }, comment: { type: 'string' }, result: { type: 'object' }, evidence: {} }, required: ['itemId', 'revision', 'decision'] } },
+  { name: 'board_review', description: 'Revisa la versión exacta: aprobar (no envía) o pedir corrección.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, revision: { type: 'number' }, decision: { type: 'string', enum: ['approve', 'correction'] }, comment: { type: 'string' }, result: { type: 'object' }, evidence: {}, document: { type: 'object', properties: { content: { type: 'string' }, fileName: { type: 'string' }, mediaType: { type: 'string' }, encoding: { type: 'string', enum: ['base64', 'utf8'] } } } }, required: ['itemId', 'revision', 'decision'] } },
   { name: 'board_request_data', description: 'Marca que faltan datos.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, reason: { type: 'string' } }, required: ['itemId'] } },
   { name: 'board_mark_stale', description: 'Los datos cambiaron: la aprobación vigente queda obsoleta.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, reason: { type: 'string' } }, required: ['itemId'] } },
   { name: 'board_revalidate', description: 'Revalida antes del efecto; si cambió, exige nueva revisión.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, changed: { type: 'boolean' }, note: { type: 'string' } }, required: ['itemId', 'changed'] } },
   { name: 'board_record_effect', description: 'Registra el efecto externo de una versión aprobada (requiere autorización).', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, revision: { type: 'number' }, ref: { type: 'string' }, authorizationRef: { type: 'string' } }, required: ['itemId', 'revision', 'authorizationRef'] } },
   { name: 'board_reopen', description: 'Reabre un elemento aprobado o completado.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, reason: { type: 'string' } }, required: ['itemId'] } },
   { name: 'board_fail', description: 'Marca un fallo conservando la evidencia.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, reason: { type: 'string' } }, required: ['itemId'] } },
+  { name: 'board_read_document', description: 'Lee el documento adjunto (base64) de una versión.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, revision: { type: 'number' } }, required: ['itemId'] } },
 ]
 
 function mapBoard(name, args, ctx) {
@@ -336,13 +338,14 @@ function mapBoard(name, args, ctx) {
     }
     case 'board_list': return ['board.list', { ownerId: userId, status: args.status, spaceId: args.spaceId, kind: args.kind }]
     case 'board_get': return ['board.get', { itemId: args.itemId }]
-    case 'board_review': return ['board.review', { itemId: args.itemId, revision: args.revision, decision: args.decision, comment: args.comment, result: args.result, evidence: args.evidence, userId }]
+    case 'board_review': return ['board.review', { itemId: args.itemId, revision: args.revision, decision: args.decision, comment: args.comment, result: args.result, evidence: args.evidence, document: args.document, userId }]
     case 'board_request_data': return ['board.requestData', { itemId: args.itemId, reason: args.reason, userId }]
     case 'board_mark_stale': return ['board.markStale', { itemId: args.itemId, reason: args.reason, userId }]
     case 'board_revalidate': return ['board.revalidate', { itemId: args.itemId, changed: args.changed, note: args.note }]
     case 'board_record_effect': return ['board.recordEffect', { itemId: args.itemId, revision: args.revision, ref: args.ref, authorizationRef: args.authorizationRef, userId }]
     case 'board_reopen': return ['board.reopen', { itemId: args.itemId, reason: args.reason, userId }]
     case 'board_fail': return ['board.fail', { itemId: args.itemId, reason: args.reason }]
+    case 'board_read_document': return ['board.readDocument', { itemId: args.itemId, revision: args.revision, userId }]
     default: return null
   }
 }

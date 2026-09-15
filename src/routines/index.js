@@ -107,13 +107,15 @@ export class RoutinesService {
   #repo
   #availableTools
   #availableAgents
+  #onReview
 
-  constructor({ idGen, now, repository, availableTools = () => [], availableAgents = () => [] } = {}) {
+  constructor({ idGen, now, repository, availableTools = () => [], availableAgents = () => [], onReview = null } = {}) {
     this.#idGen = idGen ?? (() => randomUUID())
     this.#now = now ?? (() => new Date().toISOString())
     this.#repo = repository ?? null
     this.#availableTools = availableTools
     this.#availableAgents = availableAgents
+    this.#onReview = onReview
     if (this.#repo && typeof this.#repo.read === 'function') {
       const state = this.#repo.read()
       if (state) {
@@ -313,7 +315,7 @@ export class RoutinesService {
 
   resumeExecution(id, { event = null } = {}) {
     const ex = this.#requireRun(id)
-    if (ex.status !== 'waiting' || !ex.waitState) fail('NOT_WAITING', `la ejecución ${id} no está esperando`)
+    if (!['waiting', 'waiting_approval'].includes(ex.status) || !ex.waitState) fail('NOT_WAITING', `la ejecución ${id} no está esperando`)
     if (event && !matches(ex.waitState, event)) fail('EVENT_MISMATCH', `el evento no coincide con la espera (${ex.waitState.key})`)
     const routine = this.#routines.get(ex.routineId)
     const index = routine.steps.findIndex((s) => s.id === ex.waitState.stepId)
@@ -329,7 +331,7 @@ export class RoutinesService {
     const at = now || this.#now()
     const resumed = []
     for (const ex of [...this.#runs.values()]) {
-      if (ex.status !== 'waiting' || !ex.waitState) continue
+      if (!['waiting', 'waiting_approval'].includes(ex.status) || !ex.waitState) continue
       const event = events.find((ev) => matches(ex.waitState, ev))
       if (event) {
         resumed.push(this.resumeExecution(ex.id, { event }))
@@ -362,7 +364,7 @@ export class RoutinesService {
     const ev = normalizeEvent(event, this.#now())
     const resumed = []
     for (const ex of [...this.#runs.values()]) {
-      if (ex.status !== 'waiting' || !ex.waitState) continue
+      if (!['waiting', 'waiting_approval'].includes(ex.status) || !ex.waitState) continue
       if (userId && (this.#routines.get(ex.routineId) || {}).ownerId !== userId) continue
       if (matches(ex.waitState, ev)) resumed.push(this.resumeExecution(ex.id, { event: ev }))
     }
@@ -687,6 +689,23 @@ export class RoutinesService {
       ex.pendingEvent = null
       ex.status = 'waiting'
       st.status = 'waiting'
+      ex.updatedAt = this.#now()
+      this.#persistRun(ex)
+      return this.#runView(ex)
+    }
+
+    if (result && result.review) {
+      if (!this.#onReview) return this.#finishStep(ex, routine, i, { ok: false, error: 'REVIEW_NOT_AVAILABLE' })
+      let item
+      try {
+        item = this.#onReview({ ...result.review, executionId: ex.id, ownerId: routine.ownerId, spaceId: routine.spaceId, stepId: step.id })
+      } catch (e) {
+        return this.#finishStep(ex, routine, i, { ok: false, error: (e && e.message) || 'REVIEW_FAILED' })
+      }
+      st.output = result.output ?? st.output
+      st.reviewId = item ? item.id : null
+      ex.status = 'waiting_approval'
+      ex.waitState = { stepId: step.id, type: 'approval', key: item ? item.id : null, timeoutAt: null, snapshot: null }
       ex.updatedAt = this.#now()
       this.#persistRun(ex)
       return this.#runView(ex)

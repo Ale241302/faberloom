@@ -53,19 +53,36 @@ Estados: `in_progress`, `waiting_data`, `waiting_approval`, `approved`,
 - **Reapertura**: un elemento aprobado/completado puede `reopen` para una
   corrección posterior, conservando historial y evidencia.
 
-## 4. Persistencia
+## 4. Creación automática desde una ejecución
+
+Un paso de rutina puede devolver `{ output, review }`; el motor, al aplicarlo,
+**crea el elemento de Mesa** (con `executionId`, `ownerId` y `spaceId` del rutina)
+y deja la ejecución en `waiting_approval`. La aprobación se resuelve en la Mesa y
+la ejecución se reanuda con `executions.resume({ event: { type:'approval',
+key: <itemId>, decision } })`; el paso, al re-ejecutarse, recibe `ctx.event`.
+
+El host conecta `onReview` al crear el `RoutinesService`:
+`onReview: (payload) => boardService.submit(payload)`.
+
+## 5. Documento adjunto
+
+`board.submit`/`board.review` aceptan `document: { content, fileName, mediaType,
+encoding: 'base64'|'utf8' }`; se guarda en el almacén de blobs y la versión lleva
+`document: { ref, fileName, mediaType, size, sha256 }`. `board.readDocument`
+devuelve el documento en base64 (solo el dueño).
+
+## 6. Persistencia
 
 Tabla SQLite `board_items` (incremental `saveBoardItem`; también JSON/memoria).
 
-## 5. Pruebas
+## 7. Pruebas
 
 `test/board.test.js` cubre **F16** (aprobar no envía; el efecto exige
 autorización), evidencia obligatoria, aprobación por versión exacta, corrección
-con nueva versión, **F09** (obsolescencia y revalidación), excepciones
-(`requestData`, `reopen`) y persistencia SQLite.
+con nueva versión, **F09** (obsolescencia y revalidación), excepciones,
+persistencia SQLite, **documento adjunto como blob** y **creación automática del
+elemento desde una ejecución** con reanudación por aprobación.
 
-## 6. Fuera de alcance (siguiente)
+## 8. Fuera de alcance (siguiente)
 
-- Conectar la Mesa con las ejecuciones (crear el elemento al proponer un
-  resultado) y con la autonomía (E7/E8).
-- Adjuntar el documento real como blob al elemento (hoy guarda `result`/`links`).
+- Enlazar el elemento de Mesa con la autonomía (E7/E8): aprobar ≠ conceder permiso.

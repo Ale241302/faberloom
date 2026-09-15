@@ -2,7 +2,9 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { BoardService } from '../src/board/index.js'
+import { RoutinesService } from '../src/routines/index.js'
 import { SqliteRepository } from '../src/store/sqlite.js'
+import { MemoryBlobStore } from '../src/store/blob.js'
 
 const fixedNow = () => '2026-09-15T00:00:00.000Z'
 const seq = (prefix) => {
@@ -109,4 +111,48 @@ test('la Mesa persiste (SQLite) entre instancias', () => {
   assert.equal(got.status, 'approved')
   assert.equal(got.revision, 1)
   assert.equal(s2.run('board.list', { ownerId: 'u1' }).data.length, 1)
+})
+
+test('documento adjunto como blob y lectura por el dueño', () => {
+  const s = new BoardService({ idGen: seq('id'), now: fixedNow, blobStore: new MemoryBlobStore() })
+  const item = s.run('board.submit', {
+    ownerId: 'u1',
+    title: 'Proforma Eguisa',
+    kind: 'proforma',
+    evidence: { ref: 'e1' },
+    document: { content: Buffer.from('PDFDATA').toString('base64'), encoding: 'base64', fileName: 'oc.pdf', mediaType: 'application/pdf' },
+  }).data
+  const doc = item.versions[0].document
+  assert.equal(doc.fileName, 'oc.pdf')
+  assert.equal(doc.mediaType, 'application/pdf')
+
+  const read = s.run('board.readDocument', { itemId: item.id, userId: 'u1' }).data
+  assert.equal(Buffer.from(read.base64, 'base64').toString('utf8'), 'PDFDATA')
+  assert.equal(read.sha256, doc.sha256)
+
+  assert.equal(s.run('board.readDocument', { itemId: item.id, userId: 'otro' }).ok, false)
+})
+
+test('una ejecución crea el elemento de Mesa y se reanuda con la aprobación', () => {
+  const board = new BoardService({ idGen: seq('b'), now: fixedNow })
+  const routines = new RoutinesService({ idGen: seq('r'), now: fixedNow, onReview: (p) => board.submit(p) })
+  routines.registerStepHandler('propose', (ctx) =>
+    ctx.event ? { output: 'seguir' } : { output: 'propuesta', review: { title: 'Proforma', kind: 'proforma', result: { total: 1 }, evidence: { ref: 'e1' } } },
+  )
+  const r = routines.run('routines.create', { name: 'R', ownerId: 'u1', steps: [{ id: 'a', type: 'propose' }] }).data
+  routines.run('routines.activate', { routineId: r.id })
+  const ex = routines.run('executions.start', { routineId: r.id }).data.execution
+
+  const waiting = routines.run('executions.advance', { executionId: ex.id }).data
+  assert.equal(waiting.status, 'waiting_approval')
+
+  const items = board.run('board.list', { ownerId: 'u1' }).data
+  assert.equal(items.length, 1)
+  assert.equal(items[0].executionId, ex.id)
+  assert.equal(items[0].status, 'waiting_approval')
+
+  // Aprobar en la Mesa y reanudar la ejecución con el evento de aprobación.
+  board.run('board.review', { itemId: items[0].id, revision: 1, decision: 'approve', userId: 'u1' })
+  const done = routines.run('executions.resume', { executionId: ex.id, event: { type: 'approval', key: items[0].id, decision: 'approve' } }).data
+  assert.equal(done.status, 'completed')
 })

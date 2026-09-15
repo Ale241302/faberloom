@@ -31,11 +31,13 @@ export class BoardService {
   #idGen
   #now
   #repo
+  #blob
 
-  constructor({ idGen, now, repository } = {}) {
+  constructor({ idGen, now, repository, blobStore } = {}) {
     this.#idGen = idGen ?? (() => randomUUID())
     this.#now = now ?? (() => new Date().toISOString())
     this.#repo = repository ?? null
+    this.#blob = blobStore ?? null
     if (this.#repo && typeof this.#repo.read === 'function') {
       const state = this.#repo.read()
       for (const b of (state && state.board) || []) this.#items.set(b.id, b)
@@ -46,8 +48,19 @@ export class BoardService {
     return `${prefix}_${this.#idGen()}`
   }
 
+  /** Guarda un documento adjunto en el almacén de blobs. */
+  #storeDocument(doc) {
+    if (!doc) return null
+    if (!this.#blob) fail('NO_BLOB_STORE', 'no hay almacenamiento de contenido configurado')
+    const content = Buffer.isBuffer(doc.content)
+      ? doc.content
+      : Buffer.from(String(doc.content ?? ''), doc.encoding === 'base64' ? 'base64' : 'utf8')
+    const put = this.#blob.put(content, { mediaType: doc.mediaType ?? 'application/octet-stream' })
+    return { ref: put.ref, fileName: doc.fileName ?? null, mediaType: doc.mediaType ?? 'application/octet-stream', size: put.size, sha256: put.sha256 }
+  }
+
   /** Envía un resultado a revisión. Exige evidencia real del resultado. */
-  submit({ ownerId, title, kind = 'document', result = null, evidence = null, links = [], executionId = null, spaceId = null, status = 'waiting_approval' } = {}) {
+  submit({ ownerId, title, kind = 'document', result = null, evidence = null, links = [], document = null, executionId = null, spaceId = null, status = 'waiting_approval' } = {}) {
     if (!ownerId) fail('INVALID_OWNER', 'ownerId es obligatorio')
     if (!title) fail('INVALID_TITLE', 'title es obligatorio')
     if (!evidence) fail('NO_EVIDENCE', 'no se puede presentar «preparado» sin evidencia real')
@@ -61,7 +74,7 @@ export class BoardService {
       kind,
       status,
       revision: 1,
-      versions: [{ revision: 1, result, evidence, links: [...links], at, by: ownerId }],
+      versions: [{ revision: 1, result, evidence, links: [...links], document: this.#storeDocument(document), at, by: ownerId }],
       reviews: [],
       effects: [],
       stale: false,
@@ -86,7 +99,7 @@ export class BoardService {
   }
 
   /** Revisa la versión exacta: aprobar o pedir corrección. Aprobar no envía nada. */
-  review({ itemId, revision, decision, comment = null, result = null, evidence = null, userId } = {}) {
+  review({ itemId, revision, decision, comment = null, result = null, evidence = null, document = null, userId } = {}) {
     const item = this.#require(itemId)
     if (!['approve', 'correction'].includes(decision)) fail('INVALID_DECISION', `decisión inválida: ${decision}`)
     if (item.status === 'completed') fail('ALREADY_COMPLETED', 'el elemento ya se completó')
@@ -104,7 +117,15 @@ export class BoardService {
     // Corrección → nueva versión
     const nextRevision = item.revision + 1
     const base = item.versions[item.versions.length - 1]
-    item.versions.push({ revision: nextRevision, result: result ?? base.result, evidence: evidence ?? base.evidence, links: [...(base.links || [])], at: this.#now(), by: userId ?? null })
+    item.versions.push({
+      revision: nextRevision,
+      result: result ?? base.result,
+      evidence: evidence ?? base.evidence,
+      links: [...(base.links || [])],
+      document: document ? this.#storeDocument(document) : base.document ?? null,
+      at: this.#now(),
+      by: userId ?? null,
+    })
     item.revision = nextRevision
     item.stale = false
     item.staleReason = null
@@ -113,6 +134,20 @@ export class BoardService {
     item.updatedAt = this.#now()
     this.#persist(item)
     return this.#view(item)
+  }
+
+  /** Devuelve el documento de una versión (por defecto la vigente) como base64. */
+  readDocument({ itemId, revision = null, userId } = {}) {
+    const item = this.#require(itemId)
+    if (userId && item.ownerId !== userId) fail('ACCESS_DENIED', 'el elemento es de otro usuario')
+    const rev = revision ?? item.revision
+    const version = item.versions.find((v) => v.revision === rev)
+    if (!version) fail('VERSION_NOT_FOUND', `revisión ${rev} no existe`)
+    if (!version.document || !version.document.ref) fail('NO_DOCUMENT', 'la versión no tiene documento adjunto')
+    if (!this.#blob) fail('NO_BLOB_STORE', 'no hay almacenamiento de contenido configurado')
+    const obj = this.#blob.get(version.document.ref)
+    if (!obj) fail('CONTENT_NOT_FOUND', `no se encontró ${version.document.ref}`)
+    return { itemId, revision: rev, ref: version.document.ref, fileName: version.document.fileName, mediaType: version.document.mediaType, size: obj.size, sha256: obj.sha256, base64: obj.buf.toString('base64') }
   }
 
   /** Marca que faltan datos (excepción en la Mesa). */
@@ -200,6 +235,7 @@ export class BoardService {
         case 'board.recordEffect': return ok(this.recordEffect(params))
         case 'board.reopen': return ok(this.reopen(params))
         case 'board.fail': return ok(this.fail(params))
+        case 'board.readDocument': return ok(this.readDocument(params))
         default: return { ok: false, error: { code: 'UNKNOWN_OPERATION', message: operation } }
       }
     } catch (e) {
