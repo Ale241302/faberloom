@@ -24,7 +24,14 @@ agentsService.registerTool({ id: 'upper', name: 'upper', handler: (input) => ({ 
 agentsService.registerTool({ id: 'async_upper', name: 'async_upper', handler: async (input) => ({ text: String((input && input.text) || '').toUpperCase() }) })
 
 const accessService = new AccessService({ repository })
-const learningService = new LearningService({ repository })
+const learningService = new LearningService({
+  repository,
+  authorizePromotion: ({ userId, targetScope, originScope }) => {
+    if (targetScope.spaceId) return service.checkPermission(targetScope.spaceId, userId, 'edit')
+    if (originScope.spaceId) return service.checkPermission(originScope.spaceId, userId, 'manage')
+    return { allowed: true }
+  },
+})
 const boardService = new BoardService({
   repository,
   blobStore,

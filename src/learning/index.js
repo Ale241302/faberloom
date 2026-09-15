@@ -39,11 +39,13 @@ export class LearningService {
   #idGen
   #now
   #repo
+  #authorizePromotion
 
-  constructor({ idGen, now, repository } = {}) {
+  constructor({ idGen, now, repository, authorizePromotion = null } = {}) {
     this.#idGen = idGen ?? (() => randomUUID())
     this.#now = now ?? (() => new Date().toISOString())
     this.#repo = repository ?? null
+    this.#authorizePromotion = authorizePromotion
     if (this.#repo && typeof this.#repo.read === 'function') {
       const state = this.#repo.read()
       for (const t of (state && state.teachings) || []) this.#teachings.set(t.id, t)
@@ -204,6 +206,14 @@ export class LearningService {
       if (src.scope[k] == null || String(src.scope[k]) !== String(v)) fail('NOT_A_BROADENING', `el alcance destino no amplía el origen (${k})`)
     }
     if (Object.keys(target).length >= Object.keys(src.scope).length) fail('NOT_A_BROADENING', 'el alcance destino no es más amplio que el origen')
+
+    // Comprobar permisos sobre el alcance destino (o el origen si es base común).
+    if (this.#authorizePromotion) {
+      if (!userId) fail('FORBIDDEN_SCOPE', 'la promoción requiere identidad')
+      const verdict = this.#authorizePromotion({ userId, targetScope: target, originScope: { ...src.scope } })
+      const allowed = verdict === true || (verdict && verdict.allowed === true)
+      if (!allowed) fail('FORBIDDEN_SCOPE', (verdict && verdict.reason) || 'sin permiso sobre el alcance')
+    }
 
     const current = src.versions[src.versions.length - 1]
     const at = this.#now()

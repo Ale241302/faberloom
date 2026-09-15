@@ -34,7 +34,9 @@ regla central: **aprobar o aprender nunca concede permiso**.
   `onCorrection`). El elemento guarda los `teachings` derivados.
 - **Promoción a base común:** `learning.promote` amplía el alcance de una
   excepción (p. ej. quitar `spaceId`). Exige que el destino sea **realmente más
-  amplio** (`NOT_A_BROADENING` si añade o cambia un eje) y deja el original y su
+  amplio** (`NOT_A_BROADENING` si añade o cambia un eje), **comprueba permisos**
+  (editar el espacio destino, o administrar el espacio de origen si se promueve a
+  base común; si no → `FORBIDDEN_SCOPE`) y deja el original y su
   `provenance.promotedFrom`.
 
 ## 2. Desempeño contextual
@@ -83,7 +85,6 @@ revocación) y **Mesa ↔ autonomía**.
 
 ## 7. Estado
 
-- Extracción automática de enseñanzas desde una corrección (candidata) y
-  promoción a base común implementadas.
-- Pendiente de arquitectura: comprobar permisos de espacio al promover (hoy
-  valida el alcance y exige `reason`/`userId`).
+- Extracción automática de enseñanzas desde una corrección (candidata), promoción
+  a base común con **comprobación de permisos de espacio**, y autonomía separada
+  de la Mesa. Sin pendientes funcionales de E7.

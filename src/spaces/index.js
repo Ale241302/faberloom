@@ -291,6 +291,17 @@ export class SpacesService {
     return { spaceId: s.id, ref }
   }
 
+  /** Comprueba permiso sin lanzar: { allowed, role, reason }. */
+  checkPermission(spaceId, userId, permission = 'view') {
+    const s = this.#spaces.get(spaceId)
+    if (!s) return { allowed: false, reason: 'SPACE_NOT_FOUND' }
+    if (s.personal) return s.ownerId === userId ? { allowed: true, role: 'owner' } : { allowed: false, reason: 'ACCESS_DENIED' }
+    const role = this.#effectiveRole(s, userId)
+    if (!role) return { allowed: false, reason: 'ACCESS_DENIED' }
+    if (!PERMISSIONS[permission] || !PERMISSIONS[permission].includes(role)) return { allowed: false, role, reason: 'FORBIDDEN' }
+    return { allowed: true, role }
+  }
+
   /** Contrato único para UI y MCP. Devuelve {ok:true,data} o {ok:false,error}. */
   run(operation, params = {}) {
     try {

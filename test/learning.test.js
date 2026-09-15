@@ -2,6 +2,7 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 
 import { LearningService } from '../src/learning/index.js'
+import { SpacesService } from '../src/spaces/index.js'
 import { SqliteRepository } from '../src/store/sqlite.js'
 
 const fixedNow = () => '2026-09-15T00:00:00.000Z'
@@ -111,6 +112,38 @@ test('promover una excepción a base común exige que amplíe', () => {
 
   const same = s.run('learning.promote', { teachingId: t.id, targetScope: { spaceId: 'eguisa', taskType: 'proforma' } })
   assert.equal(same.ok, false)
+})
+
+test('promover exige permiso sobre el alcance', () => {
+  const spaces = new SpacesService({ idGen: seq('s'), now: fixedNow })
+  const learning = new LearningService({
+    idGen: seq('l'),
+    now: fixedNow,
+    authorizePromotion: ({ userId, targetScope, originScope }) => {
+      if (targetScope.spaceId) return spaces.checkPermission(targetScope.spaceId, userId, 'edit')
+      if (originScope.spaceId) return spaces.checkPermission(originScope.spaceId, userId, 'manage')
+      return { allowed: true }
+    },
+  })
+  const eguisa = spaces.run('spaces.create', { name: 'Eguisa', ownerId: 'alice', members: [{ userId: 'bob', role: 'viewer' }] }).data
+  const t = learning.run('learning.propose', { ownerId: 'alice', scope: { spaceId: eguisa.id, taskType: 'proforma', agentId: 'ag1' }, text: 'regla' }).data
+  learning.run('learning.activate', { teachingId: t.id })
+
+  // A base común: requiere manage sobre el espacio de origen → bob (viewer) no.
+  const denied = learning.run('learning.promote', { teachingId: t.id, targetScope: { taskType: 'proforma' }, userId: 'bob' })
+  assert.equal(denied.ok, false)
+  assert.equal(denied.error.code, 'FORBIDDEN_SCOPE')
+  const allowed = learning.run('learning.promote', { teachingId: t.id, targetScope: { taskType: 'proforma' }, userId: 'alice', reason: 'base común' })
+  assert.equal(allowed.ok, true)
+  assert.equal(allowed.data.status, 'active')
+
+  // Conserva el espacio destino (drop de otros ejes): requiere edit sobre el destino.
+  const den = learning.run('learning.promote', { teachingId: t.id, targetScope: { spaceId: eguisa.id }, userId: 'bob' })
+  assert.equal(den.ok, false)
+  assert.equal(den.error.code, 'FORBIDDEN_SCOPE')
+  const ok = learning.run('learning.promote', { teachingId: t.id, targetScope: { spaceId: eguisa.id }, userId: 'alice' })
+  assert.equal(ok.ok, true)
+  assert.deepEqual(ok.data.scope, { spaceId: eguisa.id })
 })
 
 test('el conocimiento persiste (SQLite)', () => {
