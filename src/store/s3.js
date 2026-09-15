@@ -21,7 +21,7 @@ process.stdin.on('end', async () => {
     const body = spec.method === 'PUT' ? Buffer.concat(chunks) : undefined;
     const r = await fetch(spec.url, { method: spec.method, headers: spec.headers, body });
     if (r.status === 404) process.exit(4);
-    if (!r.ok) { process.stderr.write('S3 ' + r.status + ' ' + spec.method); process.exit(3); }
+    if (!r.ok) process.exit(3);
     const ab = await r.arrayBuffer();
     if (ab.byteLength) process.stdout.write(Buffer.from(ab));
   } catch (e) {
