@@ -29,6 +29,8 @@ const boardService = new BoardService({
   blobStore,
   // Aprobar en la Mesa NO concede permiso: el efecto valida la concesión.
   authorize: (ref, ctx) => accessService.check({ grantId: ref, action: ctx.action, context: ctx.context }),
+  // Una corrección extrae automáticamente una enseñanza (candidata).
+  onCorrection: (payload) => learningService.propose(payload),
 })
 
 const routinesService = new RoutinesService({

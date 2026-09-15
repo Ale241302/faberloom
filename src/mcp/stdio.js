@@ -29,6 +29,7 @@ const boardService = new BoardService({
   repository,
   blobStore,
   authorize: (ref, ctx) => accessService.check({ grantId: ref, action: ctx.action, context: ctx.context }),
+  onCorrection: (payload) => learningService.propose(payload),
 })
 
 const routinesService = new RoutinesService({

@@ -319,7 +319,7 @@ const BOARD_TOOLS = [
   },
   { name: 'board_list', description: 'Lista elementos de la Mesa.', inputSchema: { type: 'object', properties: { status: { type: 'string' }, spaceId: { type: 'string' }, kind: { type: 'string' } } } },
   { name: 'board_get', description: 'Detalle de un elemento.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] } },
-  { name: 'board_review', description: 'Revisa la versión exacta: aprobar (no envía) o pedir corrección.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, revision: { type: 'number' }, decision: { type: 'string', enum: ['approve', 'correction'] }, comment: { type: 'string' }, result: { type: 'object' }, evidence: {}, document: { type: 'object', properties: { content: { type: 'string' }, fileName: { type: 'string' }, mediaType: { type: 'string' }, encoding: { type: 'string', enum: ['base64', 'utf8'] } } } }, required: ['itemId', 'revision', 'decision'] } },
+  { name: 'board_review', description: 'Revisa la versión exacta: aprobar (no envía) o pedir corrección.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, revision: { type: 'number' }, decision: { type: 'string', enum: ['approve', 'correction'] }, comment: { type: 'string' }, result: { type: 'object' }, evidence: {}, teachingKind: { type: 'string', enum: ['error', 'preference', 'requirement'] }, document: { type: 'object', properties: { content: { type: 'string' }, fileName: { type: 'string' }, mediaType: { type: 'string' }, encoding: { type: 'string', enum: ['base64', 'utf8'] } } } }, required: ['itemId', 'revision', 'decision'] } },
   { name: 'board_request_data', description: 'Marca que faltan datos.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, reason: { type: 'string' } }, required: ['itemId'] } },
   { name: 'board_mark_stale', description: 'Los datos cambiaron: la aprobación vigente queda obsoleta.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, reason: { type: 'string' } }, required: ['itemId'] } },
   { name: 'board_revalidate', description: 'Revalida antes del efecto; si cambió, exige nueva revisión.', inputSchema: { type: 'object', properties: { itemId: { type: 'string' }, changed: { type: 'boolean' }, note: { type: 'string' } }, required: ['itemId', 'changed'] } },
@@ -338,7 +338,7 @@ function mapBoard(name, args, ctx) {
     }
     case 'board_list': return ['board.list', { ownerId: userId, status: args.status, spaceId: args.spaceId, kind: args.kind }]
     case 'board_get': return ['board.get', { itemId: args.itemId }]
-    case 'board_review': return ['board.review', { itemId: args.itemId, revision: args.revision, decision: args.decision, comment: args.comment, result: args.result, evidence: args.evidence, document: args.document, userId }]
+    case 'board_review': return ['board.review', { itemId: args.itemId, revision: args.revision, decision: args.decision, comment: args.comment, result: args.result, evidence: args.evidence, document: args.document, teachingKind: args.teachingKind, userId }]
     case 'board_request_data': return ['board.requestData', { itemId: args.itemId, reason: args.reason, userId }]
     case 'board_mark_stale': return ['board.markStale', { itemId: args.itemId, reason: args.reason, userId }]
     case 'board_revalidate': return ['board.revalidate', { itemId: args.itemId, changed: args.changed, note: args.note }]
@@ -384,6 +384,7 @@ const LEARNING_TOOLS = [
   { name: 'learning_record_outcome', description: 'Registra el resultado de un caso (desempeño contextual).', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, spaceId: { type: 'string' }, taskType: { type: 'string' }, outcome: { type: 'string', enum: ['approved', 'corrected', 'error', 'requirement_change'] }, lateError: { type: 'boolean' }, reviewMs: { type: 'number' } }, required: ['outcome'] } },
   { name: 'learning_performance', description: 'Desempeño agregado (sin confianza inventada).', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, spaceId: { type: 'string' }, taskType: { type: 'string' } } } },
   { name: 'learning_record_late_error', description: 'Error posterior: nueva enseñanza vinculada al caso.', inputSchema: { type: 'object', properties: { scope: { type: 'object' }, text: { type: 'string' }, provenance: { type: 'object' } }, required: ['text'] } },
+  { name: 'learning_promote', description: 'Promueve una excepción a una base común (alcance más amplio).', inputSchema: { type: 'object', properties: { teachingId: { type: 'string' }, targetScope: { type: 'object' }, reason: { type: 'string' } }, required: ['teachingId', 'targetScope'] } },
   { name: 'learning_export_scope', description: 'Exporta el conocimiento de un alcance (con versiones).', inputSchema: { type: 'object', properties: { scope: { type: 'object' } } } },
   { name: 'learning_import_records', description: 'Importa conocimiento conservando versiones (no restaura permisos).', inputSchema: { type: 'object', properties: { records: { type: 'array' } } } },
 ]
@@ -404,6 +405,7 @@ function mapLearning(name, args, ctx) {
     case 'learning_record_outcome': return ['learning.recordOutcome', { ownerId: userId, agentId: args.agentId, spaceId: args.spaceId, taskType: args.taskType, outcome: args.outcome, lateError: args.lateError, reviewMs: args.reviewMs }]
     case 'learning_performance': return ['learning.performance', { agentId: args.agentId, spaceId: args.spaceId, taskType: args.taskType }]
     case 'learning_record_late_error': return ['learning.recordLateError', { ownerId: userId, scope: args.scope || {}, text: args.text, provenance: args.provenance || {} }]
+    case 'learning_promote': return ['learning.promote', { teachingId: args.teachingId, targetScope: args.targetScope || {}, reason: args.reason, userId }]
     case 'learning_export_scope': return ['learning.exportScope', { ownerId: userId, scope: args.scope || {} }]
     case 'learning_import_records': return ['learning.importRecords', { ownerId: userId, records: args.records || [] }]
     default: return null

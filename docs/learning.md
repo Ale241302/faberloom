@@ -28,6 +28,14 @@ regla central: **aprobar o aprender nunca concede permiso**.
 - `learning.usages(teachingId)` → trazabilidad de usos por versión.
 - `learning.recordLateError` → error posterior: nueva enseñanza `error` vinculada
   al caso original (`provenance.ref`).
+- **Extracción automática:** al pedir una **corrección** en la Mesa, se propone
+  automáticamente una enseñanza (candidata) con alcance `{ spaceId, taskType }`,
+  texto del comentario y `provenance.source: "correction"` (el host lo conecta con
+  `onCorrection`). El elemento guarda los `teachings` derivados.
+- **Promoción a base común:** `learning.promote` amplía el alcance de una
+  excepción (p. ej. quitar `spaceId`). Exige que el destino sea **realmente más
+  amplio** (`NOT_A_BROADENING` si añade o cambia un eje) y deja el original y su
+  `provenance.promotedFrom`.
 
 ## 2. Desempeño contextual
 
@@ -73,8 +81,9 @@ permisos), **F36** (editar/revocar con historia y usos) y persistencia SQLite.
 `test/access.test.js` cubre concesiones (contexto, expiración, agotamiento,
 revocación) y **Mesa ↔ autonomía**.
 
-## 7. Fuera de alcance (siguiente)
+## 7. Estado
 
-- Extracción automática de enseñanzas desde una corrección (hoy se proponen).
-- Promoción de una excepción de un cliente a una base común (requiere revisión de
-  alcance y permisos).
+- Extracción automática de enseñanzas desde una corrección (candidata) y
+  promoción a base común implementadas.
+- Pendiente de arquitectura: comprobar permisos de espacio al promover (hoy
+  valida el alcance y exige `reason`/`userId`).

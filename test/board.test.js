@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 
 import { BoardService } from '../src/board/index.js'
 import { RoutinesService } from '../src/routines/index.js'
+import { LearningService } from '../src/learning/index.js'
 import { SqliteRepository } from '../src/store/sqlite.js'
 import { MemoryBlobStore } from '../src/store/blob.js'
 
@@ -155,4 +156,20 @@ test('una ejecución crea el elemento de Mesa y se reanuda con la aprobación', 
   board.run('board.review', { itemId: items[0].id, revision: 1, decision: 'approve', userId: 'u1' })
   const done = routines.run('executions.resume', { executionId: ex.id, event: { type: 'approval', key: items[0].id, decision: 'approve' } }).data
   assert.equal(done.status, 'completed')
+})
+
+test('una corrección extrae automáticamente una enseñanza (candidata)', () => {
+  const learning = new LearningService({ idGen: seq('l'), now: fixedNow })
+  const board = new BoardService({ idGen: seq('b'), now: fixedNow, onCorrection: (p) => learning.propose(p) })
+  const item = board.run('board.submit', { ownerId: 'u1', spaceId: 'eguisa', title: 'Proforma', kind: 'proforma', evidence: { ref: 'e1' } }).data
+  const corrected = board.run('board.review', { itemId: item.id, revision: 1, decision: 'correction', comment: 'usar el término de pago vigente', teachingKind: 'preference', userId: 'u1' }).data
+
+  assert.equal(corrected.teachings.length, 1)
+  const teaching = learning.run('learning.list', { ownerId: 'u1' }).data[0]
+  assert.equal(teaching.id, corrected.teachings[0])
+  assert.equal(teaching.status, 'candidate')
+  assert.equal(teaching.kind, 'preference')
+  assert.deepEqual(teaching.scope, { spaceId: 'eguisa', taskType: 'proforma' })
+  assert.equal(teaching.provenance.source, 'correction')
+  assert.equal(teaching.provenance.itemId, item.id)
 })

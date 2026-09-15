@@ -33,13 +33,15 @@ export class BoardService {
   #repo
   #blob
   #authorize
+  #onCorrection
 
-  constructor({ idGen, now, repository, blobStore, authorize = null } = {}) {
+  constructor({ idGen, now, repository, blobStore, authorize = null, onCorrection = null } = {}) {
     this.#idGen = idGen ?? (() => randomUUID())
     this.#now = now ?? (() => new Date().toISOString())
     this.#repo = repository ?? null
     this.#blob = blobStore ?? null
     this.#authorize = authorize
+    this.#onCorrection = onCorrection
     if (this.#repo && typeof this.#repo.read === 'function') {
       const state = this.#repo.read()
       for (const b of (state && state.board) || []) this.#items.set(b.id, b)
@@ -101,7 +103,7 @@ export class BoardService {
   }
 
   /** Revisa la versión exacta: aprobar o pedir corrección. Aprobar no envía nada. */
-  review({ itemId, revision, decision, comment = null, result = null, evidence = null, document = null, userId } = {}) {
+  review({ itemId, revision, decision, comment = null, result = null, evidence = null, document = null, teachingKind = null, userId } = {}) {
     const item = this.#require(itemId)
     if (!['approve', 'correction'].includes(decision)) fail('INVALID_DECISION', `decisión inválida: ${decision}`)
     if (item.status === 'completed') fail('ALREADY_COMPLETED', 'el elemento ya se completó')
@@ -133,6 +135,21 @@ export class BoardService {
     item.staleReason = null
     item.reviews.push({ revision, decision: 'correction', comment, at: this.#now(), by: userId ?? null })
     item.status = 'in_progress'
+    // Extracción automática de una enseñanza desde la corrección.
+    if (this.#onCorrection) {
+      try {
+        const teaching = this.#onCorrection({
+          ownerId: item.ownerId,
+          scope: { spaceId: item.spaceId, taskType: item.kind },
+          kind: teachingKind || 'preference',
+          text: comment || `Corrección de «${item.title}»`,
+          provenance: { source: 'correction', ref: `board:${item.id}`, itemId: item.id, revision, author: userId ?? null },
+        })
+        if (teaching && teaching.id) item.teachings = [...(item.teachings || []), teaching.id]
+      } catch {
+        /* la corrección no debe fallar si el aprendizaje no está disponible */
+      }
+    }
     item.updatedAt = this.#now()
     this.#persist(item)
     return this.#view(item)
@@ -275,6 +292,7 @@ export class BoardService {
       versions: item.versions,
       reviews: item.reviews,
       effects: item.effects,
+      teachings: item.teachings || [],
       stale: item.stale,
       staleReason: item.staleReason,
       executionId: item.executionId,

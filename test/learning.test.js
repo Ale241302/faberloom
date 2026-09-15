@@ -94,6 +94,25 @@ test('F32 · restaurar el conocimiento conserva versiones y no restaura permisos
   assert.equal(imported.versions.length, 2)
 })
 
+test('promover una excepción a base común exige que amplíe', () => {
+  const s = svc()
+  const t = s.run('learning.propose', { ownerId: 'u1', scope: { spaceId: 'eguisa', taskType: 'proforma' }, text: 'regla' }).data
+  s.run('learning.activate', { teachingId: t.id })
+
+  const promoted = s.run('learning.promote', { teachingId: t.id, targetScope: { taskType: 'proforma' }, reason: 'aplica a todos los clientes', userId: 'u1' }).data
+  assert.equal(promoted.status, 'active')
+  assert.deepEqual(promoted.scope, { taskType: 'proforma' })
+  assert.equal(promoted.provenance.promotedFrom, t.id)
+  assert.equal(s.run('learning.list', { ownerId: 'u1' }).data.length, 2) // el original sigue
+
+  const changed = s.run('learning.promote', { teachingId: t.id, targetScope: { spaceId: 'otro' } })
+  assert.equal(changed.ok, false)
+  assert.equal(changed.error.code, 'NOT_A_BROADENING')
+
+  const same = s.run('learning.promote', { teachingId: t.id, targetScope: { spaceId: 'eguisa', taskType: 'proforma' } })
+  assert.equal(same.ok, false)
+})
+
 test('el conocimiento persiste (SQLite)', () => {
   const repo = new SqliteRepository(':memory:')
   const s1 = svc(repo)

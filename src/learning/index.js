@@ -192,6 +192,38 @@ export class LearningService {
     return this.activate({ teachingId: teaching.id })
   }
 
+  /**
+   * Promueve una excepción (alcance estrecho) a una base común (alcance más
+   * amplio). Exige que el destino sea realmente más amplio y deja rastro.
+   */
+  promote({ teachingId, targetScope = {}, reason = null, userId = null } = {}) {
+    const src = this.#require(teachingId)
+    if (src.status === 'revoked') fail('TEACHING_REVOKED', 'no se promueve una enseñanza revocada')
+    const target = pickScope(targetScope)
+    for (const [k, v] of Object.entries(target)) {
+      if (src.scope[k] == null || String(src.scope[k]) !== String(v)) fail('NOT_A_BROADENING', `el alcance destino no amplía el origen (${k})`)
+    }
+    if (Object.keys(target).length >= Object.keys(src.scope).length) fail('NOT_A_BROADENING', 'el alcance destino no es más amplio que el origen')
+
+    const current = src.versions[src.versions.length - 1]
+    const at = this.#now()
+    const teaching = {
+      id: this._id('tch'),
+      ownerId: src.ownerId,
+      scope: target,
+      kind: src.kind,
+      status: 'active',
+      version: 1,
+      versions: [{ version: 1, text: current.text, at, by: userId ?? null, status: 'active' }],
+      provenance: { source: 'promotion', ref: `teaching:${src.id}`, promotedFrom: src.id, reason, author: userId ?? null },
+      createdAt: at,
+      updatedAt: at,
+    }
+    this.#teachings.set(teaching.id, teaching)
+    this.#persistTeaching(teaching)
+    return this.#view(teaching)
+  }
+
   /** Exporta el conocimiento de un alcance (con versiones). */
   exportScope({ ownerId, scope = {} } = {}) {
     const items = [...this.#teachings.values()].filter((t) => (!ownerId || t.ownerId === ownerId) && matchesScope(t.scope, scope))
@@ -224,6 +256,7 @@ export class LearningService {
         case 'learning.recordOutcome': return ok(this.recordOutcome(params))
         case 'learning.performance': return ok(this.performance(params))
         case 'learning.recordLateError': return ok(this.recordLateError(params))
+        case 'learning.promote': return ok(this.promote(params))
         case 'learning.exportScope': return ok(this.exportScope(params))
         case 'learning.importRecords': return ok(this.importRecords(params))
         default: return { ok: false, error: { code: 'UNKNOWN_OPERATION', message: operation } }
