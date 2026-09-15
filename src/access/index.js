@@ -91,8 +91,12 @@ export class AccessService {
   check({ grantId = null, ownerId = null, agentId = null, action, context = null } = {}) {
     if (!action) fail('INVALID_ACTION', 'action es obligatoria')
     const nowMs = Date.now()
-    let grant = grantId ? this.#grants.get(grantId) : null
-    if (!grant) {
+    let grant = null
+    if (grantId) {
+      // Un grantId explícito no cae al respaldo: debe existir.
+      grant = this.#grants.get(grantId) || null
+      if (!grant) return { allowed: false, reason: 'GRANT_NOT_FOUND' }
+    } else {
       grant = [...this.#grants.values()].find(
         (g) => g.status === 'active' && g.action === action && (ownerId === null || g.ownerId === ownerId) && (agentId === null || g.agentId === null || g.agentId === agentId),
       )

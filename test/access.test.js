@@ -33,6 +33,14 @@ test('sin concesión no hay permiso', () => {
   assert.equal(s.run('access.check', { ownerId: 'u1', action: 'send_document' }).data.reason, 'NO_GRANT')
 })
 
+test('un grantId desconocido no cae a otra concesión de la misma acción', () => {
+  const s = svc()
+  s.run('access.grant', { ownerId: 'u1', action: 'board.effect' })
+  const r = s.run('access.check', { grantId: 'grn_x', action: 'board.effect' }).data
+  assert.equal(r.allowed, false)
+  assert.equal(r.reason, 'GRANT_NOT_FOUND')
+})
+
 test('Mesa ↔ autonomía: aprobar no concede permiso; el efecto valida la concesión', () => {
   const access = svc()
   const board = new BoardService({ idGen: seq('b'), now: fixedNow, authorize: (ref, ctx) => access.check({ grantId: ref, action: ctx.action, context: ctx.context }) })
