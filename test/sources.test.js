@@ -65,3 +65,20 @@ test('dispatchOnce: el segundo no despacha mientras el bloqueo está tomado', ()
   assert.equal(ra.acquired, true)
   assert.equal(ra.dispatched, true)
 })
+
+test('bloqueo atómico en SQLite (una sentencia)', () => {
+  const repo = new SqliteRepository(':memory:')
+  const nowIso = new Date().toISOString()
+  const future = new Date(Date.now() + 60000).toISOString()
+  const past = new Date(Date.now() - 60000).toISOString()
+
+  assert.equal(repo.tryAcquireLock('dispatcher', 'A', nowIso, future), true)
+  assert.equal(repo.tryAcquireLock('dispatcher', 'B', nowIso, future), false)
+  assert.equal(repo.releaseLock('dispatcher', 'B'), false)
+  assert.equal(repo.releaseLock('dispatcher', 'A'), true)
+  assert.equal(repo.tryAcquireLock('dispatcher', 'B', nowIso, future), true)
+
+  // Un lease vencido lo puede tomar otro titular.
+  repo.saveLock({ name: 'dispatcher', owner: 'X', expiresAt: past })
+  assert.equal(repo.tryAcquireLock('dispatcher', 'Y', nowIso, future), true)
+})

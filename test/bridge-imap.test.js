@@ -3,6 +3,8 @@ import assert from 'node:assert/strict'
 import net from 'node:net'
 
 import { pollMailbox, messageToEvent } from '../src/bridge/imap.js'
+import { parseMessage } from '../src/bridge/mime.js'
+import { MemoryBlobStore } from '../src/store/blob.js'
 
 function startFakeImap() {
   const messages = [
@@ -59,4 +61,40 @@ test('imap: messageToEvent parsea cabeceras y cuerpo', () => {
   assert.equal(ev.subject, 'Hola')
   assert.equal(ev.id, '<x>')
   assert.equal(ev.data.body, 'cuerpo')
+})
+
+test('mime: extrae texto y adjunto (base64) como blob', () => {
+  const pdf = Buffer.from('PDFDATA').toString('base64')
+  const raw = [
+    'From: cliente@x.com',
+    'Subject: Con adjunto',
+    'Message-ID: <m9@x>',
+    'Content-Type: multipart/mixed; boundary="BOUND"',
+    '',
+    '--BOUND',
+    'Content-Type: text/plain; charset=utf-8',
+    '',
+    'cuerpo texto',
+    '--BOUND',
+    'Content-Type: application/pdf; name="oc.pdf"',
+    'Content-Disposition: attachment; filename="oc.pdf"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    pdf,
+    '--BOUND--',
+    '',
+  ].join('\r\n')
+
+  const parsed = parseMessage(raw)
+  assert.equal(parsed.text.trim(), 'cuerpo texto')
+  assert.equal(parsed.attachments.length, 1)
+
+  const blob = new MemoryBlobStore()
+  const ev = messageToEvent(raw, { blobStore: blob })
+  assert.equal(ev.subject, 'Con adjunto')
+  assert.equal(ev.data.body.trim(), 'cuerpo texto')
+  const att = ev.data.attachments[0]
+  assert.equal(att.fileName, 'oc.pdf')
+  assert.equal(att.mediaType, 'application/pdf')
+  assert.equal(blob.get(att.ref).buf.toString('utf8'), 'PDFDATA')
 })

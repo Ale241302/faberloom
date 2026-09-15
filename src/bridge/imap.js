@@ -1,6 +1,8 @@
 import net from 'node:net'
 import tls from 'node:tls'
 
+import { parseMessage } from './mime.js'
+
 /**
  * Cliente IMAP mínimo (sin dependencias) para el puente de correo.
  * Soporta LOGIN, SELECT, UID SEARCH UNSEEN, UID FETCH (BODY.PEEK[]) y STORE.
@@ -145,23 +147,16 @@ function quote(s) {
   return `"${String(s).replace(/(["\\])/g, '\\$1')}"`
 }
 
-/** Convierte un mensaje crudo (RFC822) en un evento. */
-export function messageToEvent(raw, { source = 'email', mailbox = null } = {}) {
-  const text = Buffer.isBuffer(raw) ? raw.toString('utf8') : String(raw || '')
-  const headerEnd = text.indexOf('\r\n\r\n')
-  const head = headerEnd === -1 ? text : text.slice(0, headerEnd)
-  const body = headerEnd === -1 ? '' : text.slice(headerEnd + 4)
-  const headers = {}
-  let current = null
-  for (const line of head.split(/\r\n/)) {
-    const m = /^([A-Za-z-]+):\s*(.*)$/.exec(line)
-    if (m) {
-      current = m[1].toLowerCase()
-      headers[current] = m[2]
-    } else if (current && /^\s/.test(line)) {
-      headers[current] += ` ${line.trim()}`
-    }
-  }
+/** Convierte un mensaje crudo (RFC822) en un evento; guarda adjuntos como blobs. */
+export function messageToEvent(raw, { source = 'email', mailbox = null, blobStore = null } = {}) {
+  const msg = parseMessage(raw)
+  const headers = msg.headers
+  const attachments = (msg.attachments || []).map((a) => {
+    const base = { fileName: a.fileName, mediaType: a.mediaType, size: a.content.length }
+    if (!blobStore) return base
+    const put = blobStore.put(a.content, { mediaType: a.mediaType })
+    return { ...base, sha256: put.sha256, ref: put.ref }
+  })
   return {
     type: 'event',
     source,
@@ -170,19 +165,19 @@ export function messageToEvent(raw, { source = 'email', mailbox = null } = {}) {
     subject: headers.subject || null,
     mailbox,
     receivedAt: headers.date || undefined,
-    data: { from: headers.from || null, subject: headers.subject || null, body },
+    data: { from: headers.from || null, subject: headers.subject || null, body: msg.text, attachments },
   }
 }
 
 /** Sondea un buzón y devuelve los eventos de los mensajes no vistos. */
-export async function pollMailbox(config) {
+export async function pollMailbox(config, { blobStore = null } = {}) {
   const client = new ImapClient(config)
   await client.connect()
   try {
     await client.login()
     await client.select(config.mailbox || 'INBOX')
     const messages = await client.fetchUnseen()
-    const events = messages.map((m) => messageToEvent(m.raw, { source: config.source || 'email', mailbox: config.mailbox || 'INBOX' }))
+    const events = messages.map((m) => messageToEvent(m.raw, { source: config.source || 'email', mailbox: config.mailbox || 'INBOX', blobStore }))
     if (config.markSeen !== false && messages.length) await client.markSeen(messages.map((m) => m.uid))
     return events
   } finally {

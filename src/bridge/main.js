@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 
 import { RoutinesService } from '../routines/index.js'
 import { repositoryFromEnv } from '../store/from-env.js'
+import { blobStoreFromEnv } from '../store/blob.js'
 import { pollMailbox } from './imap.js'
 
 /**
@@ -17,12 +18,13 @@ const intervalMs = Number(process.env.FABERLOOM_BRIDGE_INTERVAL_MS || 60000)
 
 const repository = await repositoryFromEnv(process.env, dataDir)
 const routines = new RoutinesService({ repository })
+const blobStore = blobStoreFromEnv(process.env)
 
 async function runOnce() {
   const sources = routines.listAllSources().filter((s) => s.type === 'email')
   for (const src of sources) {
     try {
-      const events = await pollMailbox(src.config)
+      const events = await pollMailbox(src.config, { blobStore })
       let delivered = 0
       for (const event of events) {
         const out = routines.run('events.ingest', { event, userId: src.userId })

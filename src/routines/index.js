@@ -421,22 +421,35 @@ export class RoutinesService {
   // ── Bloqueo de despachador (concurrencia) ──────────────────────────
   acquireLock({ name = 'dispatcher', owner, ttlMs = 60000 } = {}) {
     const nowMs = Date.now()
-    let current = this.#locks.get(name)
-    if (this.#repo && typeof this.#repo.read === 'function') {
-      const st = this.#repo.read()
-      const persisted = ((st && st.locks) || []).find((l) => l.name === name)
-      if (persisted) current = persisted
+    const expiresAt = new Date(nowMs + ttlMs).toISOString()
+    const nowIso = new Date(nowMs).toISOString()
+    // Atómico en la BD cuando el repositorio lo soporta.
+    if (this.#repo && typeof this.#repo.tryAcquireLock === 'function') {
+      const acquired = this.#repo.tryAcquireLock(name, owner, nowIso, expiresAt)
+      if (!acquired) {
+        const st = this.#repo.read()
+        const cur = ((st && st.locks) || []).find((l) => l.name === name)
+        return { acquired: false, owner: cur ? cur.owner : undefined, expiresAt: cur ? cur.expiresAt : undefined }
+      }
+      this.#locks.set(name, { name, owner, expiresAt })
+      return { acquired: true, name, owner, expiresAt }
     }
+    const current = this.#locks.get(name)
     if (current && current.owner !== owner && current.expiresAt && new Date(current.expiresAt).getTime() > nowMs) {
       return { acquired: false, owner: current.owner, expiresAt: current.expiresAt }
     }
-    const lock = { name, owner, expiresAt: new Date(nowMs + ttlMs).toISOString() }
+    const lock = { name, owner, expiresAt }
     this.#locks.set(name, lock)
     this.#persistLock(lock)
     return { acquired: true, ...lock }
   }
 
   releaseLock({ name = 'dispatcher', owner } = {}) {
+    if (this.#repo && typeof this.#repo.releaseLock === 'function') {
+      const released = this.#repo.releaseLock(name, owner)
+      this.#locks.delete(name)
+      return { released }
+    }
     const current = this.#locks.get(name)
     if (!current || current.owner !== owner) return { released: false }
     this.#locks.delete(name)

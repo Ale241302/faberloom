@@ -144,7 +144,13 @@ FABERLOOM_BRIDGE_INTERVAL_MS=60000 npm run bridge
 consigue el bloqueo, de modo que varios despachadores no procesan la misma cola a
 la vez. El host lo programa periódicamente (`FABERLOOM_DISPATCH_MS`).
 
-## 12. Fuera de alcance (siguiente)
+## 12. Estado
 
-- Bloqueo atómico a nivel de base de datos (hoy es leer-y-escribir con lease).
-- Adjuntos del correo como blobs (hoy el cuerpo va en `data.body`).
+- **Bloqueo atómico**: `SqliteRepository.tryAcquireLock` resuelve el lease en una
+  sola sentencia (`INSERT ... ON CONFLICT ... WHERE ...`), atómica en la base de
+  datos; `releaseLock` solo borra si el titular coincide. Los repositorios de
+  memoria/JSON usan el respaldo leer-y-escribir.
+- **Adjuntos del correo**: el puente parsea MIME (`src/bridge/mime.js`; multipart,
+  base64 y quoted-printable) y guarda cada adjunto en el almacén de blobs; el
+  evento lleva `data.attachments: [{ fileName, mediaType, size, sha256, ref }]`.
+  Una rutina puede vincular esos `ref` a un espacio.

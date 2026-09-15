@@ -519,6 +519,24 @@ export class SqliteRepository {
     this.#db.prepare('INSERT OR REPLACE INTO locks (name, owner, expires_at) VALUES (?, ?, ?)').run(l.name, l.owner ?? null, l.expiresAt ?? null)
   }
 
+  /** Adquiere el bloqueo de forma atómica (una sola sentencia SQL). */
+  tryAcquireLock(name, owner, nowIso, expiresAt) {
+    const info = this.#db
+      .prepare(
+        `INSERT INTO locks (name, owner, expires_at) VALUES (?, ?, ?)
+         ON CONFLICT(name) DO UPDATE SET owner=excluded.owner, expires_at=excluded.expires_at
+         WHERE locks.owner IS NULL OR locks.owner = excluded.owner OR locks.expires_at IS NULL OR locks.expires_at <= ?`,
+      )
+      .run(name, owner, expiresAt, nowIso)
+    return info.changes > 0
+  }
+
+  /** Libera el bloqueo solo si lo tiene ese owner. */
+  releaseLock(name, owner) {
+    const info = this.#db.prepare('DELETE FROM locks WHERE name = ? AND owner = ?').run(name, owner)
+    return info.changes > 0
+  }
+
   saveRoutine(r) {
     const { id, name, intent, ownerId, spaceId, version, status, createdAt, updatedAt, ...data } = r
     this.#db
