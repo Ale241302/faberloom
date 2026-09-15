@@ -84,12 +84,41 @@ del harness se resuelve internamente y **nunca** se expone a la UI ni al agente.
 Además: conflicto de reglas expuesto, versiones registradas, workdir opaco y
 contrato `run()` sin excepciones.
 
-## 7. Fuera de este corte (siguientes)
+## 7. Persistencia
 
-- **Persistencia** real (hoy en memoria) y migraciones.
-- **Servidor MCP** que exponga estas operaciones con la identidad del usuario.
-- **ACL fina** (roles por espacio, herencia de accesos) y verificación de acceso a
-  cada ancestro al resolver contexto.
+El servicio acepta un `repository` con `read()`/`write(state)`; si se omite, usa
+memoria. Dos implementaciones incluidas:
+
+- `MemoryRepository` (por defecto): estado en el proceso.
+- `JsonFileRepository(ruta)`: archivo JSON con **escritura atómica** (temp +
+  rename). Síncrono a propósito en este corte.
+
+El servicio hidrata su estado al construirse y persiste tras cada mutación
+(crear/editar espacio, crear el ámbito personal). Estado persistido:
+`{ version, spaces[], personalIndex }`.
+
+## 8. Servidor MCP
+
+`src/mcp/server.js` expone las operaciones como herramientas MCP sobre **stdio**,
+sin dependencias. Herramientas: `spaces_create`, `spaces_get`, `spaces_list`,
+`spaces_update`, `spaces_effective_context`, `spaces_personal`,
+`spaces_preview_link`, `spaces_resolve_workdir`.
+
+- `initialize`, `tools/list`, `tools/call`, `ping` y notificaciones.
+- Errores de dominio llegan como `result.isError: true` (no como excepción).
+- Identidad: `FABERLOOM_USER_ID` o `arguments.userId`. Con transporte HTTP, la
+  identidad vendrá de la cabecera del gateway (por usuario).
+
+Arranque: `FABERLOOM_DATA_FILE=/ruta/spaces.json node src/mcp/stdio.js`
+(o `npm run mcp`).
+
+## 9. Fuera de este corte (siguientes)
+
+- **Backend de datos** definitivo (SQLite/Postgres) y migraciones; hoy JSON.
+- **Transporte HTTP** del MCP con identidad por usuario/empresa (no solo stdio).
+- **ACL fina** (roles por espacio) y verificación de acceso a cada ancestro al
+  resolver contexto.
 - Integración con la **UI** del harness (navegación por espacios) y con el login
-  del gateway (identidad y empresa).
-- Vínculo de **conversaciones y archivos** a espacios (más allá de la vista previa).
+  del gateway.
+- Vínculo real de **conversaciones y archivos** a espacios (más allá de la vista
+  previa).

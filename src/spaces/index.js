@@ -35,13 +35,22 @@ function normalizeContext(items) {
 
 export class SpacesService {
   #spaces = new Map()
-  #personalByUser = new Map()
+  #personalByUser = new Map() // userId -> spaceId
   #idGen
   #now
+  #repo
 
-  constructor({ idGen, now } = {}) {
+  constructor({ idGen, now, repository } = {}) {
     this.#idGen = idGen ?? (() => randomUUID())
     this.#now = now ?? (() => new Date().toISOString())
+    this.#repo = repository ?? null
+    if (this.#repo && typeof this.#repo.read === 'function') {
+      const state = this.#repo.read()
+      if (state && Array.isArray(state.spaces)) {
+        for (const s of state.spaces) this.#spaces.set(s.id, s)
+        for (const [uid, sid] of Object.entries(state.personalIndex || {})) this.#personalByUser.set(uid, sid)
+      }
+    }
   }
 
   _id(prefix) {
@@ -70,6 +79,7 @@ export class SpacesService {
       createdAt: this.#now(),
     }
     this.#spaces.set(space.id, space)
+    this.#persist()
     return this.#view(space)
   }
 
@@ -99,6 +109,7 @@ export class SpacesService {
     if (patch.excluded !== undefined) s.excluded = Array.isArray(patch.excluded) ? [...patch.excluded] : []
     if (patch.members !== undefined) s.members = uniq([s.ownerId, ...(Array.isArray(patch.members) ? patch.members : [])])
     s.version += 1
+    this.#persist()
     return this.#view(s)
   }
 
@@ -195,26 +206,35 @@ export class SpacesService {
   }
 
   #ensurePersonal(userId) {
-    let s = this.#personalByUser.get(userId)
-    if (!s) {
-      s = {
-        id: this._id('per'),
-        name: 'Personal',
-        theme: null,
-        ownerId: userId,
-        parentId: null,
-        inheritContext: false,
-        personal: true,
-        members: [userId],
-        context: [],
-        excluded: [],
-        version: 1,
-        createdAt: this.#now(),
-      }
-      this.#spaces.set(s.id, s)
-      this.#personalByUser.set(userId, s)
+    const existingId = this.#personalByUser.get(userId)
+    if (existingId) return this.#spaces.get(existingId)
+    const s = {
+      id: this._id('per'),
+      name: 'Personal',
+      theme: null,
+      ownerId: userId,
+      parentId: null,
+      inheritContext: false,
+      personal: true,
+      members: [userId],
+      context: [],
+      excluded: [],
+      version: 1,
+      createdAt: this.#now(),
     }
+    this.#spaces.set(s.id, s)
+    this.#personalByUser.set(userId, s.id)
+    this.#persist()
     return s
+  }
+
+  #persist() {
+    if (!this.#repo || typeof this.#repo.write !== 'function') return
+    this.#repo.write({
+      version: 1,
+      spaces: [...this.#spaces.values()],
+      personalIndex: Object.fromEntries(this.#personalByUser),
+    })
   }
 
   #collect(spaceId, seen) {

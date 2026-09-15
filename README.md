@@ -15,6 +15,8 @@ un producto terminado.
 - **Ámbito personal** («sin espacio asignado») aislado por usuario.
 - **Vista previa de audiencia** al vincular una conversación a un espacio
   compartido.
+- **Persistencia** con repositorio intercambiable (memoria o archivo JSON atómico).
+- **Servidor MCP** (stdio) que expone las operaciones como herramientas.
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).
@@ -23,10 +25,17 @@ Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).
 
 ```js
 import { SpacesService } from './src/spaces/index.js'
+import { JsonFileRepository } from './src/store/repository.js'
 
-const spaces = new SpacesService()
+const spaces = new SpacesService({ repository: new JsonFileRepository('./data/spaces.json') })
 const { ok, data } = spaces.run('spaces.create', { name: 'Marluvas', ownerId: 'u1' })
 console.log(data.id)
+```
+
+Servidor MCP por stdio:
+
+```bash
+FABERLOOM_DATA_FILE=./data/spaces.json FABERLOOM_USER_ID=u1 npm run mcp
 ```
 
 ## Pruebas
@@ -39,9 +48,10 @@ node --test
 
 - El núcleo es **independiente del harness**: no asume que un directorio técnico
   sea un espacio de negocio.
-- Persistencia en memoria por ahora; el backend de datos se decide después del
-  inventario de persistencia del harness.
-- Pendiente: servidor MCP propio, integración con la UI y con el login del gateway.
+- Persistencia en archivo JSON (síncrona) en este corte; el backend definitivo se
+  decide tras el inventario de persistencia del harness.
+- Pendiente: transporte MCP por HTTP con identidad, ACL fina e integración con la
+  UI del harness.
 
 Los planes e inventarios operativos viven en el paquete de planificación
 (hermano `DeepSeek-Harnees`).
