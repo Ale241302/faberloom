@@ -28,6 +28,19 @@ routinesService.registerStepHandler('echo', (ctx) => ({ output: ctx.ex.context }
 routinesService.registerStepHandler('effect_echo', (ctx) => ({ output: 'hecho', effect: { ref: `ef_${ctx.effectKey}` } }))
 routinesService.registerStepHandler('wait_event', (ctx) => (ctx.event ? { output: 'respondido' } : { waitFor: { type: 'event', key: ctx.step?.id || 'event' } }))
 
+// Despachador periódico del host: avanza pendientes y reanuda esperas bajo bloqueo.
+const dispatchMs = Number(process.env.FABERLOOM_DISPATCH_MS || 15000)
+if (dispatchMs > 0) {
+  const owner = `host-${process.pid}`
+  setInterval(() => {
+    try {
+      routinesService.run('dispatcher.dispatch', { owner })
+    } catch {
+      /* noop */
+    }
+  }, dispatchMs).unref?.()
+}
+
 startHttp({
   service,
   agentsService,

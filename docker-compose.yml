@@ -27,6 +27,28 @@ services:
       retries: 5
       start_period: 10s
 
+  # Puente de correo: sondea los buzones de las fuentes por usuario y entrega
+  # eventos a las rutinas. Reutiliza la imagen y el mismo volumen/DB.
+  bridge:
+    image: faberloom/mcp:latest
+    container_name: faberloom-bridge
+    restart: unless-stopped
+    command: ["node", "src/bridge/main.js"]
+    env_file:
+      - .env
+    environment:
+      FABERLOOM_STORE: sqlite
+      FABERLOOM_DB: /data/spaces.sqlite
+      FABERLOOM_BLOB_DIR: /data/blobs
+      FABERLOOM_BRIDGE_INTERVAL_MS: "60000"
+    volumes:
+      - faberloom_data:/data
+    networks:
+      - harness-net
+      - mwt_default
+    depends_on:
+      - mcp
+
 networks:
   harness-net:
     name: harness-net

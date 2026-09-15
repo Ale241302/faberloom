@@ -95,6 +95,14 @@ export class SqliteRepository {
       CREATE TABLE IF NOT EXISTS effects (
         key TEXT PRIMARY KEY, execution_id TEXT, step_id TEXT, ref TEXT, cancelled INTEGER NOT NULL DEFAULT 0, created_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS sources (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, type TEXT NOT NULL,
+        config TEXT, token_hash TEXT, created_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_sources_user ON sources (user_id);
+      CREATE TABLE IF NOT EXISTS locks (
+        name TEXT PRIMARY KEY, owner TEXT, expires_at TEXT
+      );
     `)
     this.#ensureColumns('space_links', {
       stored: 'INTEGER NOT NULL DEFAULT 0',
@@ -258,7 +266,18 @@ export class SqliteRepository {
       createdAt: r.created_at,
     }))
 
-    return { version: 1, spaces, personalIndex, links, models, agents, selections, agentExecutions, evidence, routines, runs, effects }
+    const sources = this.#db.prepare('SELECT * FROM sources ORDER BY created_at, id').all().map((r) => ({
+      id: r.id,
+      userId: r.user_id,
+      type: r.type,
+      config: r.config ? JSON.parse(r.config) : {},
+      tokenHash: r.token_hash,
+      createdAt: r.created_at,
+    }))
+
+    const locks = this.#db.prepare('SELECT * FROM locks').all().map((r) => ({ name: r.name, owner: r.owner, expiresAt: r.expires_at }))
+
+    return { version: 1, spaces, personalIndex, links, models, agents, selections, agentExecutions, evidence, routines, runs, effects, sources, locks }
   }
 
   // ── Escritura incremental ──────────────────────────────────────────
@@ -475,7 +494,29 @@ export class SqliteRepository {
         this.#db.exec('DELETE FROM effects;')
         for (const ef of state.effects || []) this.saveEffect(ef)
       }
+      if (state.sources !== undefined) {
+        this.#db.exec('DELETE FROM sources;')
+        for (const s of state.sources || []) this.saveSource(s)
+      }
+      if (state.locks !== undefined) {
+        this.#db.exec('DELETE FROM locks;')
+        for (const l of state.locks || []) this.saveLock(l)
+      }
     })
+  }
+
+  saveSource(s) {
+    this.#db
+      .prepare('INSERT OR REPLACE INTO sources (id, user_id, type, config, token_hash, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(s.id, s.userId, s.type, JSON.stringify(s.config || {}), s.tokenHash ?? null, s.createdAt ?? null)
+  }
+
+  deleteSource(id) {
+    this.#db.prepare('DELETE FROM sources WHERE id = ?').run(id)
+  }
+
+  saveLock(l) {
+    this.#db.prepare('INSERT OR REPLACE INTO locks (name, owner, expires_at) VALUES (?, ?, ?)').run(l.name, l.owner ?? null, l.expiresAt ?? null)
   }
 
   saveRoutine(r) {

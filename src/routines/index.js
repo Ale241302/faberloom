@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto'
+import { randomUUID, createHash } from 'node:crypto'
 
 /**
  * E5 · Rutinas y ejecución persistente.
@@ -68,6 +68,8 @@ function normalizeEvent(event, receivedAt) {
   }
 }
 
+const hashToken = (token) => createHash('sha256').update(String(token)).digest('hex')
+
 function detectCycle(steps) {
   const byId = new Map(steps.map((s) => [s.id, s]))
   const state = new Map() // 0=por visitar, 1=en pila, 2=listo
@@ -97,6 +99,8 @@ export class RoutinesService {
   #routines = new Map()
   #runs = new Map()
   #effects = new Map() // key -> { key, executionId, stepId, ref, cancelled, createdAt }
+  #sources = new Map() // id -> { id, userId, type, config, tokenHash, createdAt }
+  #locks = new Map() // name -> { name, owner, expiresAt }
   #handlers = new Map()
   #idGen
   #now
@@ -116,6 +120,8 @@ export class RoutinesService {
         for (const r of state.routines || []) this.#routines.set(r.id, r)
         for (const run of state.runs || []) this.#runs.set(run.id, run)
         for (const ef of state.effects || []) this.#effects.set(ef.key, ef)
+        for (const s of state.sources || []) this.#sources.set(s.id, s)
+        for (const l of state.locks || []) this.#locks.set(l.name, l)
       }
     }
   }
@@ -206,14 +212,14 @@ export class RoutinesService {
     return this.#routineView(r)
   }
 
-  validateRoutine(id) {
+  validateRoutine(id, { checkHandlers = true } = {}) {
     const r = this.#requireRoutine(id)
     const errors = []
     const missing = []
     const ids = new Set(r.steps.map((s) => s.id))
     for (const s of r.steps) {
       for (const d of s.dependsOn) if (!ids.has(d)) errors.push(`paso ${s.id} depende de ${d}, que no existe`)
-      if (s.type && !this.#handlers.has(s.type)) missing.push(`handler:${s.type}`)
+      if (checkHandlers && s.type && !this.#handlers.has(s.type)) missing.push(`handler:${s.type}`)
       if (s.toolId && !this.#availableTools().includes(s.toolId)) missing.push(`tool:${s.toolId}`)
       if (s.agentId && !this.#availableAgents().includes(s.agentId)) missing.push(`agent:${s.agentId}`)
     }
@@ -246,7 +252,7 @@ export class RoutinesService {
   startExecution({ routineId, trigger = null, context = {}, idempotencyKey = null, sources = [] } = {}) {
     const routine = this.#requireRoutine(routineId)
     if (routine.status !== 'active') fail('ROUTINE_NOT_ACTIVE', `la rutina ${routineId} no está activa`)
-    const v = this.validateRoutine(routineId)
+    const v = this.validateRoutine(routineId, { checkHandlers: false })
     if (!v.ok) fail('MISSING_CAPABILITY', JSON.stringify(v))
 
     if (idempotencyKey) {
@@ -333,20 +339,37 @@ export class RoutinesService {
         resumed.push(this.#failWait(ex, 'WAIT_TIMEOUT'))
       }
     }
-    return { now: at, resumed, started: this.#fireScheduled(at) }
+    const started = this.#fireScheduled(at)
+    const advanced = []
+    for (const ex of [...this.#runs.values()]) {
+      if (ex.status !== 'pending') continue
+      try {
+        advanced.push(this.advanceExecution(ex.id))
+      } catch {
+        /* sin handler en este proceso: se dejará para el anfitrión */
+      }
+    }
+    return { now: at, resumed, started, advanced }
+  }
+
+  /** Todas las fuentes (uso del host/puente, no expuesto al usuario final). */
+  listAllSources() {
+    return [...this.#sources.values()].map((s) => this.#sourceView(s))
   }
 
   /** Entrada real de eventos (correo/servicio): reanuda esperas y dispara rutinas. */
-  ingestEvent(event = {}) {
+  ingestEvent(event = {}, { userId = null } = {}) {
     const ev = normalizeEvent(event, this.#now())
     const resumed = []
     for (const ex of [...this.#runs.values()]) {
       if (ex.status !== 'waiting' || !ex.waitState) continue
+      if (userId && (this.#routines.get(ex.routineId) || {}).ownerId !== userId) continue
       if (matches(ex.waitState, ev)) resumed.push(this.resumeExecution(ex.id, { event: ev }))
     }
     const started = []
     for (const r of this.#routines.values()) {
       if (r.status !== 'active' || !this.#triggersMatch(r, ev)) continue
+      if (userId && r.ownerId !== userId) continue
       try {
         started.push(
           this.startExecution({
@@ -362,6 +385,75 @@ export class RoutinesService {
       }
     }
     return { event: ev, resumed, started }
+  }
+
+  // ── Fuentes por usuario (correo/webhook) ───────────────────────────
+  registerSource({ userId, type = 'email', config = {}, token = null } = {}) {
+    if (!userId) fail('INVALID_USER', 'userId es obligatorio')
+    if (!['email', 'webhook'].includes(type)) fail('INVALID_SOURCE', `tipo inválido: ${type}`)
+    const plain = token || `fb_${randomUUID().replace(/-/g, '')}`
+    const source = { id: this._id('src'), userId, type, config, tokenHash: hashToken(plain), createdAt: this.#now() }
+    this.#sources.set(source.id, source)
+    this.#persistSource(source)
+    return { ...this.#sourceView(source), token: plain } // el token solo se devuelve al crear
+  }
+
+  listSources({ userId } = {}) {
+    if (!userId) fail('INVALID_USER', 'userId es obligatorio')
+    return [...this.#sources.values()].filter((s) => s.userId === userId).map((s) => this.#sourceView(s))
+  }
+
+  removeSource({ sourceId, userId } = {}) {
+    const s = this.#sources.get(sourceId)
+    if (!s) fail('SOURCE_NOT_FOUND', `fuente ${sourceId} no existe`)
+    if (userId && s.userId !== userId) fail('ACCESS_DENIED', 'la fuente es de otro usuario')
+    this.#sources.delete(sourceId)
+    this.#persistDeleteSource(sourceId)
+    return this.#sourceView(s)
+  }
+
+  resolveSourceByToken(token) {
+    if (!token) return null
+    const h = hashToken(token)
+    return [...this.#sources.values()].find((s) => s.tokenHash === h) || null
+  }
+
+  // ── Bloqueo de despachador (concurrencia) ──────────────────────────
+  acquireLock({ name = 'dispatcher', owner, ttlMs = 60000 } = {}) {
+    const nowMs = Date.now()
+    let current = this.#locks.get(name)
+    if (this.#repo && typeof this.#repo.read === 'function') {
+      const st = this.#repo.read()
+      const persisted = ((st && st.locks) || []).find((l) => l.name === name)
+      if (persisted) current = persisted
+    }
+    if (current && current.owner !== owner && current.expiresAt && new Date(current.expiresAt).getTime() > nowMs) {
+      return { acquired: false, owner: current.owner, expiresAt: current.expiresAt }
+    }
+    const lock = { name, owner, expiresAt: new Date(nowMs + ttlMs).toISOString() }
+    this.#locks.set(name, lock)
+    this.#persistLock(lock)
+    return { acquired: true, ...lock }
+  }
+
+  releaseLock({ name = 'dispatcher', owner } = {}) {
+    const current = this.#locks.get(name)
+    if (!current || current.owner !== owner) return { released: false }
+    this.#locks.delete(name)
+    this.#persistLock({ name, owner: null, expiresAt: null })
+    return { released: true }
+  }
+
+  /** Despacha bajo bloqueo: solo el titular ejecuta el tick (evita doble proceso). */
+  dispatchOnce({ name = 'dispatcher', owner, ttlMs = 60000, now = null, events = [] } = {}) {
+    if (!owner) fail('INVALID_OWNER', 'owner es obligatorio')
+    const lock = this.acquireLock({ name, owner, ttlMs })
+    if (!lock.acquired) return { acquired: false, owner: lock.owner, dispatched: false }
+    try {
+      return { acquired: true, dispatched: true, result: this.tick({ now, events }) }
+    } finally {
+      this.releaseLock({ name, owner })
+    }
   }
 
   /** Vista previa de migración de una ejecución a la versión vigente de su rutina. */
@@ -492,7 +584,11 @@ export class RoutinesService {
       case 'executions.tick': return this.tick(params)
       case 'executions.migrate': return this.migrateExecution(params)
       case 'executions.previewMigration': return this.previewMigration(params)
-      case 'events.ingest': return this.ingestEvent(params.event || params)
+      case 'events.ingest': return this.ingestEvent(params.event || params, { userId: params.userId || null })
+      case 'sources.register': return this.registerSource(params)
+      case 'sources.list': return this.listSources(params)
+      case 'sources.remove': return this.removeSource(params)
+      case 'dispatcher.dispatch': return this.dispatchOnce(params)
       case 'executions.effects': return this.listEffects(params)
       case 'stepHandlers.register': return this.registerStepHandler(params.type, params.handler)
       default: return fail('UNKNOWN_OPERATION', operation)
@@ -724,6 +820,25 @@ export class RoutinesService {
   #persistEffect(ef) {
     if (this.#repo && typeof this.#repo.saveEffect === 'function') this.#repo.saveEffect(ef)
     else if (this.#repo && typeof this.#repo.write === 'function') this.#repo.write({ effects: [...this.#effects.values()] })
+  }
+
+  #persistSource(s) {
+    if (this.#repo && typeof this.#repo.saveSource === 'function') this.#repo.saveSource(s)
+    else if (this.#repo && typeof this.#repo.write === 'function') this.#repo.write({ sources: [...this.#sources.values()] })
+  }
+
+  #persistDeleteSource(id) {
+    if (this.#repo && typeof this.#repo.deleteSource === 'function') this.#repo.deleteSource(id)
+    else if (this.#repo && typeof this.#repo.write === 'function') this.#repo.write({ sources: [...this.#sources.values()] })
+  }
+
+  #persistLock(l) {
+    if (this.#repo && typeof this.#repo.saveLock === 'function') this.#repo.saveLock(l)
+    else if (this.#repo && typeof this.#repo.write === 'function') this.#repo.write({ locks: [...this.#locks.values()] })
+  }
+
+  #sourceView(s) {
+    return { id: s.id, userId: s.userId, type: s.type, config: structuredClone(s.config || {}), createdAt: s.createdAt }
   }
 
   #routineView(r) {

@@ -31,8 +31,9 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
   o asíncronos.
 - **Rutinas y ejecución persistente** (E5): rutinas versionadas, idempotencia,
   esperas con revalidación, reconciliación de timeouts, despachador `tick`,
-  **disparadores reales** (correo/servicio vía `POST /events`) y **migración de
-  versión** de una ejecución en curso.
+  **disparadores reales** (correo/servicio vía `POST /events`), **fuentes por
+  usuario** con token, **puente IMAP** (`npm run bridge`), **migración de versión**
+  de una ejecución en curso y **bloqueo de despachador**.
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).

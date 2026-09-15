@@ -261,6 +261,10 @@ const ROUTINES_TOOLS = [
   { name: 'executions_preview_migration', description: 'Vista previa de migración a la versión vigente.', inputSchema: { type: 'object', properties: { executionId: { type: 'string' }, rename: { type: 'object' } }, required: ['executionId'] } },
   { name: 'executions_migrate', description: 'Migra explícitamente una ejecución en curso a la versión vigente de su rutina.', inputSchema: { type: 'object', properties: { executionId: { type: 'string' }, confirm: { type: 'boolean' }, rename: { type: 'object' } }, required: ['executionId'] } },
   { name: 'events_ingest', description: 'Ingresa un evento real (correo/servicio): reanuda esperas y dispara rutinas.', inputSchema: { type: 'object', properties: { event: { type: 'object' } }, required: ['event'] } },
+  { name: 'sources_register', description: 'Registra una fuente de eventos del usuario (email/webhook) y devuelve su token.', inputSchema: { type: 'object', properties: { type: { type: 'string', enum: ['email', 'webhook'] }, config: { type: 'object' } }, required: ['type'] } },
+  { name: 'sources_list', description: 'Fuentes del usuario.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'sources_remove', description: 'Elimina una fuente del usuario.', inputSchema: { type: 'object', properties: { sourceId: { type: 'string' } }, required: ['sourceId'] } },
+  { name: 'dispatcher_dispatch', description: 'Despacha bajo bloqueo (solo el titular ejecuta el tick).', inputSchema: { type: 'object', properties: { name: { type: 'string' }, owner: { type: 'string' }, ttlMs: { type: 'number' }, now: { type: 'string' }, events: { type: 'array' } } } },
 ]
 
 function mapRoutines(name, args, ctx) {
@@ -285,7 +289,11 @@ function mapRoutines(name, args, ctx) {
     case 'executions_effects': return ['executions.effects', { executionId: args.executionId }]
     case 'executions_preview_migration': return ['executions.previewMigration', { executionId: args.executionId, rename: args.rename || {} }]
     case 'executions_migrate': return ['executions.migrate', { executionId: args.executionId, confirm: args.confirm !== false, rename: args.rename || {} }]
-    case 'events_ingest': return ['events.ingest', { event: args.event || args }]
+    case 'events_ingest': return ['events.ingest', { event: args.event || args, userId: args.userId || undefined }]
+    case 'sources_register': return ['sources.register', { userId, type: args.type, config: args.config || {}, token: args.token || null }]
+    case 'sources_list': return ['sources.list', { userId }]
+    case 'sources_remove': return ['sources.remove', { sourceId: args.sourceId, userId }]
+    case 'dispatcher_dispatch': return ['dispatcher.dispatch', { name: args.name || 'dispatcher', owner: args.owner || userId, ttlMs: args.ttlMs, now: args.now, events: args.events || [] }]
     default: return null
   }
 }
@@ -385,7 +393,7 @@ export function createMcpServer({ service, agentsService, routinesService, defau
       } else if (agentsService && name && (name.startsWith('models_') || name.startsWith('templates_') || name.startsWith('agents_') || name.startsWith('tools_'))) {
         svc = agentsService
         mapped = mapAgents(name, args, ctx)
-      } else if (routinesService && name && (name.startsWith('routines_') || name.startsWith('executions_') || name.startsWith('events_'))) {
+      } else if (routinesService && name && (name.startsWith('routines_') || name.startsWith('executions_') || name.startsWith('events_') || name.startsWith('sources_') || name.startsWith('dispatcher_'))) {
         svc = routinesService
         mapped = mapRoutines(name, args, ctx)
       }

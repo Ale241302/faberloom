@@ -60,6 +60,8 @@ y `executions.start` **rechazan** si falta algo (`ROUTINE_NOT_EXECUTABLE` /
 | `executions.advance` / `resume` / `tick` | Avance, reanudación y despacho |
 | `executions.migrate` / `previewMigration` | Migración explícita de versión |
 | `events.ingest` | Entrada real de eventos (correo/servicio) |
+| `sources.register` / `list` / `remove` | Fuentes por usuario (email/webhook) con token |
+| `dispatcher.dispatch` | Despacho bajo bloqueo |
 | `executions.effects` | Libro de efectos de la ejecución |
 | `stepHandlers.register` | Handlers del host (no por MCP) |
 
@@ -114,8 +116,35 @@ conserva los pasos completados, añade los nuevos como pendientes y admite un ma
 `rename` para pasos renombrados. Si algún paso pendiente no existe y no se mapea →
 `MIGRATION_INCOMPATIBLE` (no se migra a ciegas).
 
-## 10. Fuera de alcance (siguiente)
+## 10. Fuentes por usuario y puente de correo
 
-- Un **puente de correo** concreto (IMAP/sieve/webhook del proveedor) vive fuera
-  del núcleo; solo tiene que llamar a `POST /events` o `events.ingest`.
-- Bloqueo/optimistic-concurrency entre varios despachadores simultáneos.
+Cada usuario registra sus **fuentes** con `sources.register` (tipo `email` o
+`webhook`); devuelve un **token** que solo se muestra al crearla. El endpoint
+`POST /events` acepta:
+
+- `X-Faberloom-Gateway-Key` (host/servicio) — puede indicar `userId` en el cuerpo.
+- `Authorization: Bearer <token>` o `X-Faberloom-Source-Token` — resuelve el
+  **usuario** de la fuente, sin clave de gateway. La ingesta solo dispara las
+  rutinas de ese usuario.
+
+**Puente IMAP** (`src/bridge/main.js`, `npm run bridge`): sondea los buzones de las
+fuentes tipo `email` (cliente IMAP mínimo sin dependencias en `src/bridge/imap.js`),
+convierte cada mensaje no visto en un evento (from, subject, `Message-ID` como id de
+deduplicación) y llama a `events.ingest` con el usuario de la fuente. El secreto
+IMAP vive en la configuración de la fuente.
+
+```bash
+FABERLOOM_BRIDGE_INTERVAL_MS=60000 npm run bridge
+```
+
+## 11. Bloqueo de despachador
+
+`acquireLock` / `releaseLock` guardan un **lease** persistente (`dispatcher`,
+`owner`, `expiresAt`). `dispatcher.dispatch`/`dispatchOnce` solo ejecuta el tick si
+consigue el bloqueo, de modo que varios despachadores no procesan la misma cola a
+la vez. El host lo programa periódicamente (`FABERLOOM_DISPATCH_MS`).
+
+## 12. Fuera de alcance (siguiente)
+
+- Bloqueo atómico a nivel de base de datos (hoy es leer-y-escribir con lease).
+- Adjuntos del correo como blobs (hoy el cuerpo va en `data.body`).
