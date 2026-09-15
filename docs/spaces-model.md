@@ -134,10 +134,12 @@ construirse y persiste tras cada mutación.
 
 **Escritura incremental:** si el repositorio ofrece `saveSpace(space)`,
 `saveLink(link)` y `deleteLink(id)`, el servicio escribe **solo el objeto
-cambiado** (el `SqliteRepository` lo hace con `upsert` + reemplazo de sus filas
-hijas). Si no, cae al snapshot completo (`write(state)`), como hacen los
-repositorios JSON y de memoria. `node:sqlite` es experimental en Node 22 (emite un
-aviso), pero no requiere flag.
+cambiado**. El `SqliteRepository` va más fino: compara con lo guardado y reescribe
+únicamente los grupos que cambiaron (fila del espacio, miembros, contexto,
+exclusiones) y omite por completo si nada cambió. Si el repositorio no lo ofrece,
+cae al snapshot completo (`write(state)`), como hacen los repositorios JSON y de
+memoria. `node:sqlite` es experimental en Node 22 (emite un aviso), pero no
+requiere flag.
 
 ## 8. Servidor MCP
 
@@ -197,14 +199,12 @@ y `ref` puede ser externo (sin `content`) si se prefiere.
 
 ## 10. Estado y límites
 
-Desplegado como contenedor (`faberloom-mcp`, red `harness-net`, volumen
-`faberloom-data`) e integrado en el gateway del harness: cada `dsh` por usuario
-arranca con el MCP `faberloom` y su identidad/empresa
+Desplegado como contenedor (`faberloom-mcp`, redes `harness-net` y `mwt_default`,
+volumen `faberloom-data`) e integrado en el gateway del harness: cada `dsh` por
+usuario arranca con el MCP `faberloom` y su identidad/empresa
 (`X-Faberloom-User-Id`, `X-MWT-Client-ID`). **No hay pendientes funcionales de E3.**
 
-Mejoras opcionales (no bloquean):
-
-- Almacén de blobs en MinIO/S3 en vez del filesystem.
-- Escritura incremental por campo (hoy por espacio/vínculo completo).
-- ACL heredada comprobada también por ancestro al listar (hoy el rol efectivo ya
-  la aplica).
+- Almacén de contenido: memoria, filesystem o **S3/MinIO**
+  (`FABERLOOM_BLOB_STORE`; firma SigV4 propia, sin dependencias).
+- Escritura incremental **por grupo** en SQLite (fila, miembros, contexto,
+  exclusiones): solo reescribe lo que cambió.

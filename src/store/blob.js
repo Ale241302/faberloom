@@ -2,6 +2,8 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { createHash, randomUUID } from 'node:crypto'
 
+import { S3BlobStore } from './s3.js'
+
 /**
  * Almacenamiento de contenido de los vínculos (archivos y conversaciones).
  *
@@ -78,5 +80,16 @@ export class FsBlobStore {
 }
 
 export function blobStoreFromEnv(env = process.env) {
-  return env.FABERLOOM_BLOB_DIR ? new FsBlobStore(env.FABERLOOM_BLOB_DIR) : new MemoryBlobStore()
+  const kind = (env.FABERLOOM_BLOB_STORE || (env.FABERLOOM_BLOB_DIR ? 'fs' : 'memory')).toLowerCase()
+  if (kind === 's3') {
+    return new S3BlobStore({
+      endpoint: env.FABERLOOM_S3_ENDPOINT,
+      bucket: env.FABERLOOM_S3_BUCKET,
+      accessKey: env.FABERLOOM_S3_ACCESS_KEY,
+      secretKey: env.FABERLOOM_S3_SECRET_KEY,
+      region: env.FABERLOOM_S3_REGION || 'us-east-1',
+    })
+  }
+  if (kind === 'fs') return new FsBlobStore(env.FABERLOOM_BLOB_DIR)
+  return new MemoryBlobStore()
 }

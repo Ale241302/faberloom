@@ -117,11 +117,59 @@ export class SqliteRepository {
 
   // ── Escritura incremental ──────────────────────────────────────────
   saveSpace(s) {
+    const cur = this.#db.prepare('SELECT * FROM spaces WHERE id = ?').get(s.id)
+    const rowChanged = !cur || this.#rowDiffers(cur, s)
+
+    const curMembers = this.#db.prepare('SELECT user_id, role FROM space_members WHERE space_id = ? ORDER BY user_id').all(s.id)
+    const curContext = this.#db.prepare('SELECT id, key, value, source FROM space_context WHERE space_id = ? ORDER BY ord').all(s.id)
+    const curExcluded = this.#db.prepare('SELECT key FROM space_excluded WHERE space_id = ? ORDER BY ord').all(s.id)
+
+    const newMembers = (s.members || []).map((m) => ({ user_id: m.userId, role: m.role })).sort((a, b) => (a.user_id < b.user_id ? -1 : 1))
+    const newContext = (s.context || []).map((c) => ({ id: c.id, key: c.key, value: JSON.stringify(c.value ?? null), source: c.source ?? null }))
+    const newExcluded = (s.excluded || []).map((e) => ({ key: typeof e === 'string' ? e : (e && e.key) }))
+
+    const membersChanged = JSON.stringify(curMembers) !== JSON.stringify(newMembers)
+    const contextChanged = JSON.stringify(curContext) !== JSON.stringify(newContext)
+    const excludedChanged = JSON.stringify(curExcluded) !== JSON.stringify(newExcluded)
+
+    if (!rowChanged && !membersChanged && !contextChanged && !excludedChanged) {
+      return { row: false, members: false, context: false, excluded: false }
+    }
+
     this.#tx(() => {
-      this.#delChildren(s.id)
-      this.#insSpace(s)
-      this.#insChildren(s)
+      if (rowChanged) this.#insSpace(s)
+      if (membersChanged) {
+        this.#db.prepare('DELETE FROM space_members WHERE space_id = ?').run(s.id)
+        const ins = this.#db.prepare('INSERT INTO space_members (space_id, user_id, role) VALUES (?, ?, ?)')
+        for (const m of s.members || []) ins.run(s.id, m.userId, m.role)
+      }
+      if (contextChanged) {
+        this.#db.prepare('DELETE FROM space_context WHERE space_id = ?').run(s.id)
+        const ins = this.#db.prepare('INSERT INTO space_context (space_id, ord, id, key, value, source) VALUES (?, ?, ?, ?, ?, ?)')
+        ;(s.context || []).forEach((c, i) => ins.run(s.id, i, c.id, c.key, JSON.stringify(c.value ?? null), c.source ?? null))
+      }
+      if (excludedChanged) {
+        this.#db.prepare('DELETE FROM space_excluded WHERE space_id = ?').run(s.id)
+        const ins = this.#db.prepare('INSERT INTO space_excluded (space_id, ord, key) VALUES (?, ?, ?)')
+        ;(s.excluded || []).forEach((e, i) => ins.run(s.id, i, typeof e === 'string' ? e : (e && e.key)))
+      }
     })
+    return { row: rowChanged, members: membersChanged, context: contextChanged, excluded: excludedChanged }
+  }
+
+  #rowDiffers(r, s) {
+    return (
+      r.name !== s.name ||
+      (r.theme ?? null) !== (s.theme ?? null) ||
+      r.owner_id !== s.ownerId ||
+      (r.parent_id ?? null) !== (s.parentId ?? null) ||
+      !!r.inherit_context !== (s.inheritContext !== false) ||
+      !!r.inherit_members !== (s.inheritMembers !== false) ||
+      !!r.personal !== !!s.personal ||
+      (r.company_id ?? null) !== (s.companyId ?? null) ||
+      r.version !== s.version ||
+      r.created_at !== s.createdAt
+    )
   }
 
   saveLink(link) {
@@ -181,12 +229,6 @@ export class SqliteRepository {
       this.#db.exec('ROLLBACK')
       throw e
     }
-  }
-
-  #delChildren(spaceId) {
-    this.#db.prepare('DELETE FROM space_context WHERE space_id = ?').run(spaceId)
-    this.#db.prepare('DELETE FROM space_excluded WHERE space_id = ?').run(spaceId)
-    this.#db.prepare('DELETE FROM space_members WHERE space_id = ?').run(spaceId)
   }
 
   #insSpace(s) {

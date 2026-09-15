@@ -46,3 +46,12 @@ test('rol local y heredado se combinan por el mayor privilegio', () => {
   // bob es viewer local + admin heredado -> admin (puede gestionar)
   assert.equal(s.run('spaces.addMember', { spaceId: child.id, userId: 'bob', memberId: 'dave' }).ok, true)
 })
+
+test('listado: incluye subespacios accesibles solo por herencia', () => {
+  const s = svc()
+  const parent = s.run('spaces.create', { name: 'M', ownerId: 'alice', members: [{ userId: 'bob', role: 'editor' }] }).data
+  const child = s.run('spaces.create', { name: 'E', ownerId: 'alice', parentId: parent.id }).data
+  const ids = s.run('spaces.list', { userId: 'bob' }).data.map((x) => x.id)
+  assert.ok(ids.includes(parent.id))
+  assert.ok(ids.includes(child.id))
+})

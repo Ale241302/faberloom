@@ -16,7 +16,23 @@ test('incremental: saveSpace actualiza un espacio sin tocar los demás', () => {
   const a = s1.run('spaces.create', { name: 'A', ownerId: 'u1' }).data
   const b = s1.run('spaces.create', { name: 'B', ownerId: 'u1' }).data
 
-  repo.saveSpace({ ...a, name: 'A2', version: a.version + 1 })
+  const changed = repo.saveSpace({ ...a, name: 'A2', version: a.version + 1 })
+  assert.deepEqual(changed, { row: true, members: false, context: false, excluded: false })
+
+  const noop = repo.saveSpace({ ...a, name: 'A2', version: a.version + 1 })
+  assert.deepEqual(noop, { row: false, members: false, context: false, excluded: false })
+
+  const membersChanged = repo.saveSpace({
+    ...a,
+    name: 'A2',
+    version: a.version + 1,
+    members: [
+      { userId: 'u1', role: 'owner' },
+      { userId: 'bob', role: 'viewer' },
+    ],
+  })
+  assert.equal(membersChanged.members, true)
+  assert.equal(membersChanged.row, false)
 
   const s2 = new SpacesService({ repository: repo, idGen: seq('b'), now: fixedNow })
   assert.equal(s2.run('spaces.get', { spaceId: a.id, userId: 'u1' }).data.name, 'A2')

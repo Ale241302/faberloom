@@ -74,7 +74,8 @@ node --test
 - `Dockerfile` y `docker-compose.yml`: imagen `faberloom/mcp`, red externa
   `harness-net` y volumen `faberloom-data` (SQLite + blobs).
 - Variables clave: `FABERLOOM_GATEWAY_KEY` (secreto compartido con el gateway del
-  harness), `FABERLOOM_STORE=sqlite`, `FABERLOOM_BLOB_DIR=/data/blobs`.
+  harness), `FABERLOOM_STORE=sqlite` y `FABERLOOM_BLOB_STORE=memory|fs|s3`
+  (con `FABERLOOM_BLOB_DIR` para fs o las `FABERLOOM_S3_*` para MinIO/S3).
 - El gateway del harness inyecta este MCP en cada sesión de usuario con
   `X-Faberloom-User-Id` y `X-MWT-Client-ID`.
 
