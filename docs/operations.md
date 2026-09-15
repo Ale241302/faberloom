@@ -27,12 +27,29 @@ fuentes, mesa, enseñanzas, usos, desempeño y concesiones) con un **manifiesto*
 - **Cifrado**: si `FABERLOOM_BACKUP_KEY` (32 bytes hex) está definido, el respaldo
   se cifra con **AES-256-GCM**. La clave va **fuera** del respaldo y se gestiona
   como secreto.
-- `backup.list` / `backup.verify` (hash + manifiesto) / `backup.previewRestore`.
-- CLI: `npm run backup -- export|list|verify|restore` (restaurar exige
-  `FABERLOOM_BACKUP_CONFIRM=1`).
+- `backup.list` / `backup.verify` (hash + manifiesto) / `backup.verifyLatest` /
+  `backup.previewRestore`.
+- **Copia offsite con herramienta externa:** `FABERLOOM_BACKUP_OFFSITE_CMD` se
+  ejecuta tras exportar con la ruta del respaldo (`{file}`):
+  `rclone copy {file} offsite:faberloom-backups`, `aws s3 cp {file} s3://…`,
+  `restic backup {file}`, etc. El resultado (`ok`/`error`) queda en el registro. Un
+  fallo offsite **no** impide el respaldo local.
+- `backup.exportToFile` escribe el respaldo a un archivo para que lo suba una
+  herramienta externa.
+- CLI: `npm run backup -- export|export-to-file|list|verify|verify-latest|restore`
+  (restaurar exige `FABERLOOM_BACKUP_CONFIRM=1`).
 
 Operación propuesta: copia **diaria**, copia **previa a cada actualización** y
 **prueba de restauración mensual** en un entorno aislado.
+
+**Verificación programada:** `FABERLOOM_BACKUP_INTERVAL_MS` exporta y verifica
+periódicamente; `FABERLOOM_BACKUP_VERIFY_MS` verifica el último respaldo. Con
+`0` (por defecto) se usa **cron**:
+
+```cron
+10 4 * * * docker exec faberloom-mcp node src/backup/main.js export scheduled >> /opt/faberloom/backup.log 2>&1
+40 4 * * * docker exec faberloom-mcp node src/backup/main.js verify-latest   >> /opt/faberloom/backup.log 2>&1
+```
 
 ## 3. Restauración en modo detenido
 
@@ -65,8 +82,10 @@ de ejecuciones y **revalidación de concesiones**) y confirmación obligatoria.
 **F10/F11** (reinicio/reconciliación) y **F21** (actualización sin romper) se
 cubren por las pruebas de rutinas y por el procedimiento documentado.
 
-## 6. Fuera de alcance (siguiente)
+## 6. Estado
 
-- Copia **offsite** gestionada por una herramienta externa (hoy el respaldo se
-  escribe en el almacén S3/MinIO del propio host).
-- Verificación automática programada (cron) del último respaldo.
+- Respaldo cifrado con manifiesto, verificación (bajo demanda y **programada**),
+  **copia offsite** con herramienta externa y restauración en modo detenido
+  implementadas. Sin pendientes funcionales de E8.
+- El offsite depende de que exista una herramienta (rclone/aws/restic) y su
+  credencial en el host; aquí se documenta y se deja configurable.

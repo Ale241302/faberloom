@@ -1,4 +1,7 @@
 import { randomUUID, createHash, createCipheriv, createDecipheriv, randomBytes } from 'node:crypto'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
 /**
  * E8 · Respaldo de conocimiento y recuperación.
@@ -54,41 +57,85 @@ export class BackupService {
   #idGen
   #now
   #recheckGrant
+  #offsite
 
-  constructor({ repository, blobStore, key = null, idGen, now, recheckGrant = null } = {}) {
+  constructor({ repository, blobStore, key = null, idGen, now, recheckGrant = null, offsite = null } = {}) {
     this.#repo = repository ?? null
     this.#blob = blobStore ?? null
     this.#key = key || null
     this.#idGen = idGen ?? (() => randomUUID())
     this.#now = now ?? (() => new Date().toISOString())
     this.#recheckGrant = recheckGrant
+    // Runner opcional para copia offsite con una herramienta externa.
+    this.#offsite = offsite
   }
 
   _id(prefix) {
     return `${prefix}_${this.#idGen()}`
   }
 
-  /** Exporta el estado completo a un blob con manifiesto. */
-  exportBackup({ label = null } = {}) {
-    if (!this.#repo) fail('NO_REPOSITORY', 'no hay repositorio configurado')
-    if (!this.#blob) fail('NO_BLOB_STORE', 'no hay almacén de respaldo configurado')
+  /** Construye el payload (y lo cifra si hay clave). */
+  #buildPayload(label) {
     const state = this.#repo.read() || {}
     const sections = {}
     for (const key of SECTIONS) sections[key] = Array.isArray(state[key]) ? state[key].length : 0
     const payload = JSON.stringify({ version: 1, createdAt: this.#now(), label, state })
-    let bytes = Buffer.from(payload, 'utf8')
+    const plain = Buffer.from(payload, 'utf8')
     const encrypted = !!this.#key
-    if (encrypted) bytes = encrypt(this.#key, bytes)
+    const bytes = encrypted ? encrypt(this.#key, plain) : plain
+    return { bytes, sections, encrypted, plainSize: plain.length }
+  }
+
+  /** Exporta el estado completo a un blob con manifiesto y, si aplica, offsite. */
+  exportBackup({ label = null } = {}) {
+    if (!this.#repo) fail('NO_REPOSITORY', 'no hay repositorio configurado')
+    if (!this.#blob) fail('NO_BLOB_STORE', 'no hay almacén de respaldo configurado')
+    const { bytes, sections, encrypted, plainSize } = this.#buildPayload(label)
     const put = this.#blob.put(bytes, { mediaType: encrypted ? 'application/octet-stream' : 'application/json' })
-    const manifest = { version: 1, createdAt: this.#now(), label, encrypted, sections, sha256: put.sha256, plainSize: payload.length }
-    const record = { id: this._id('bkp'), ref: put.ref, size: put.size, sha256: put.sha256, manifest, createdAt: this.#now() }
+
+    let offsiteResult = null
+    if (this.#offsite) {
+      const tmp = path.join(os.tmpdir(), `faberloom-backup-${randomUUID()}.bak`)
+      try {
+        fs.writeFileSync(tmp, bytes)
+        offsiteResult = this.#offsite({ file: tmp, sha256: put.sha256, size: put.size, label }) || { ok: true }
+      } catch (e) {
+        offsiteResult = { ok: false, error: (e && e.message) || String(e) }
+      } finally {
+        try {
+          fs.unlinkSync(tmp)
+        } catch {
+          /* noop */
+        }
+      }
+    }
+
+    const manifest = { version: 1, createdAt: this.#now(), label, encrypted, sections, sha256: put.sha256, plainSize, offsite: offsiteResult }
+    const record = { id: this._id('bkp'), ref: put.ref, size: put.size, sha256: put.sha256, manifest, offsite: offsiteResult, createdAt: this.#now() }
     this.#persist(record)
     return this.#view(record)
+  }
+
+  /** Escribe el respaldo a un archivo (para que lo suba una herramienta externa). */
+  exportToFile({ file, label = null } = {}) {
+    if (!file) fail('INVALID_FILE', 'file es obligatorio')
+    const { bytes, sections, encrypted, plainSize } = this.#buildPayload(label)
+    fs.mkdirSync(path.dirname(path.resolve(file)), { recursive: true })
+    fs.writeFileSync(file, bytes)
+    return { file, size: bytes.length, sha256: sha256(bytes), encrypted, sections, plainSize }
   }
 
   listBackups() {
     const state = this.#repo && this.#repo.read()
     return [...((state && state.backups) || [])].map((b) => this.#view(b))
+  }
+
+  /** Verifica el respaldo más reciente (para una tarea programada). */
+  verifyLatest() {
+    const list = this.listBackups()
+    if (!list.length) return { ok: false, reason: 'NO_BACKUPS' }
+    const last = list[list.length - 1]
+    return { backupId: last.id, createdAt: last.createdAt, ...this.verifyBackup({ backupId: last.id }) }
   }
 
   #readPayload(record) {
@@ -210,8 +257,10 @@ export class BackupService {
     try {
       switch (operation) {
         case 'backup.export': return ok(this.exportBackup(params))
+        case 'backup.exportToFile': return ok(this.exportToFile(params))
         case 'backup.list': return ok(this.listBackups())
         case 'backup.verify': return ok(this.verifyBackup(params))
+        case 'backup.verifyLatest': return ok(this.verifyLatest())
         case 'backup.previewRestore': return ok(this.previewRestore(params))
         case 'backup.restore': return ok(this.restoreBackup(params))
         default: return { ok: false, error: { code: 'UNKNOWN_OPERATION', message: operation } }

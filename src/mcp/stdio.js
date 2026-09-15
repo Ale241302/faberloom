@@ -8,6 +8,7 @@ import { BoardService } from '../board/index.js'
 import { AccessService } from '../access/index.js'
 import { LearningService } from '../learning/index.js'
 import { BackupService } from '../backup/index.js'
+import { offsiteRunnerFromEnv } from '../backup/offsite.js'
 import { repositoryFromEnv } from '../store/from-env.js'
 import { blobStoreFromEnv } from '../store/blob.js'
 import { createMcpServer } from './server.js'
@@ -60,6 +61,7 @@ const backupService = new BackupService({
   repository,
   blobStore,
   key: process.env.FABERLOOM_BACKUP_KEY || null,
+  offsite: offsiteRunnerFromEnv(process.env),
   recheckGrant: (g) => (g.context && g.context.spaceId ? service.checkPermission(g.context.spaceId, g.ownerId, 'view') : { allowed: true }),
 })
 

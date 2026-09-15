@@ -1,6 +1,9 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
+import fs from 'node:fs'
+import os from 'node:os'
+import path from 'node:path'
 
 import { BackupService } from '../src/backup/index.js'
 import { SpacesService } from '../src/spaces/index.js'
@@ -134,4 +137,65 @@ test('la restauración exige confirmación', () => {
   const r = backup.run('backup.restore', { backupId: rec.id })
   assert.equal(r.ok, false)
   assert.equal(r.error.code, 'CONFIRM_REQUIRED')
+})
+
+test('offsite: la copia externa corre con el archivo y queda registrada', () => {
+  const repo = new SqliteRepository(':memory:')
+  const blob = new MemoryBlobStore()
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'faberloom-off-'))
+  try {
+    const backup = new BackupService({
+      repository: repo,
+      blobStore: blob,
+      idGen: seq('bkp'),
+      now: fixedNow,
+      offsite: ({ file }) => {
+        fs.copyFileSync(file, path.join(dir, 'last.bak'))
+        return { ok: true, target: 'rclone' }
+      },
+    })
+    const rec = backup.run('backup.export', {}).data
+    assert.equal(rec.offsite.ok, true)
+    assert.equal(rec.manifest.offsite.target, 'rclone')
+    assert.ok(fs.existsSync(path.join(dir, 'last.bak')))
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('offsite: un fallo no impide el respaldo local', () => {
+  const repo = new SqliteRepository(':memory:')
+  const blob = new MemoryBlobStore()
+  const backup = new BackupService({ repository: repo, blobStore: blob, idGen: seq('bkp'), now: fixedNow, offsite: () => ({ ok: false, error: 'boom' }) })
+  const rec = backup.run('backup.export', {}).data
+  assert.equal(rec.offsite.ok, false)
+  assert.ok(rec.ref)
+})
+
+test('exportToFile y verifyLatest', () => {
+  const repo = new SqliteRepository(':memory:')
+  const blob = new MemoryBlobStore()
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'faberloom-bkf-'))
+  try {
+    const backup = new BackupService({ repository: repo, blobStore: blob, idGen: seq('bkp'), now: fixedNow })
+    const file = path.join(dir, 'snap.json')
+    const out = backup.run('backup.exportToFile', { file }).data
+    assert.ok(fs.existsSync(file))
+    assert.match(out.sha256, /^[0-9a-f]{64}$/)
+
+    backup.run('backup.export', {})
+    const v = backup.run('backup.verifyLatest', {}).data
+    assert.equal(v.ok, true)
+  } finally {
+    fs.rmSync(dir, { recursive: true, force: true })
+  }
+})
+
+test('verifyLatest sin respaldos informa el motivo', () => {
+  const repo = new SqliteRepository(':memory:')
+  const blob = new MemoryBlobStore()
+  const backup = new BackupService({ repository: repo, blobStore: blob, idGen: seq('bkp'), now: fixedNow })
+  const v = backup.run('backup.verifyLatest', {}).data
+  assert.equal(v.ok, false)
+  assert.equal(v.reason, 'NO_BACKUPS')
 })

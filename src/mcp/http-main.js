@@ -8,6 +8,7 @@ import { BoardService } from '../board/index.js'
 import { AccessService } from '../access/index.js'
 import { LearningService } from '../learning/index.js'
 import { BackupService } from '../backup/index.js'
+import { offsiteRunnerFromEnv } from '../backup/offsite.js'
 import { repositoryFromEnv } from '../store/from-env.js'
 import { blobStoreFromEnv } from '../store/blob.js'
 import { startHttp } from './http.js'
@@ -77,9 +78,31 @@ const backupService = new BackupService({
   repository,
   blobStore,
   key: process.env.FABERLOOM_BACKUP_KEY || null,
+  offsite: offsiteRunnerFromEnv(process.env),
   // Al restaurar se revalidan permisos: una concesión de un espacio ya no accesible se revoca.
   recheckGrant: (g) => (g.context && g.context.spaceId ? service.checkPermission(g.context.spaceId, g.ownerId, 'view') : { allowed: true }),
 })
+
+// Respaldo y verificación programados (0 = desactivado; se puede usar cron).
+const backupIntervalMs = Number(process.env.FABERLOOM_BACKUP_INTERVAL_MS || 0)
+if (backupIntervalMs > 0) {
+  setInterval(() => {
+    const r = backupService.run('backup.export', { label: 'scheduled' })
+    if (!r.ok) {
+      process.stderr.write(`[backup] programado falló: ${r.error.code}\n`)
+      return
+    }
+    const v = backupService.run('backup.verify', { backupId: r.data.id })
+    process.stderr.write(`[backup] programado ${r.data.id}: verificado=${v.data.ok} offsite=${r.data.offsite ? r.data.offsite.ok : 'n/a'}\n`)
+  }, backupIntervalMs).unref?.()
+}
+const backupVerifyMs = Number(process.env.FABERLOOM_BACKUP_VERIFY_MS || 0)
+if (backupVerifyMs > 0) {
+  setInterval(() => {
+    const v = backupService.run('backup.verifyLatest', {})
+    process.stderr.write(`[backup] verificación programada: ${v.data.ok ? 'ok' : `FALLO ${v.data.reason || ''}`}\n`)
+  }, backupVerifyMs).unref?.()
+}
 
 startHttp({
   service,
