@@ -431,6 +431,36 @@ function mapBackup(name, args) {
   }
 }
 
+const UI_TOOLS = [
+  { name: 'ui_navigation', description: 'Navegación lateral y contexto personal (pantalla 1).', inputSchema: { type: 'object', properties: {} } },
+  { name: 'ui_home', description: 'Inicio desde cero (pantalla 1).', inputSchema: { type: 'object', properties: {} } },
+  { name: 'ui_board', description: 'Mesa de trabajo agrupada por estado (pantalla 3).', inputSchema: { type: 'object', properties: {} } },
+  { name: 'ui_item', description: 'Detalle de un elemento de la Mesa (resultado, contexto, autonomía).', inputSchema: { type: 'object', properties: { itemId: { type: 'string' } }, required: ['itemId'] } },
+  { name: 'ui_spaces', description: 'Espacios para la UI (pantalla 4).', inputSchema: { type: 'object', properties: {} } },
+  { name: 'ui_agents', description: 'Catálogo de agentes y pool de modelos (pantallas 5-6).', inputSchema: { type: 'object', properties: {} } },
+  { name: 'ui_routines', description: 'Rutinas y versiones (pantalla 7).', inputSchema: { type: 'object', properties: {} } },
+  { name: 'ui_memory', description: 'Memoria y desempeño (pantalla 8).', inputSchema: { type: 'object', properties: { scope: { type: 'object' } } } },
+  { name: 'ui_settings', description: 'Conexiones, modelos, permisos y respaldos (pantalla 10).', inputSchema: { type: 'object', properties: {} } },
+  { name: 'ui_tokens', description: 'Tokens de identidad de FaberLoom.', inputSchema: { type: 'object', properties: {} } },
+]
+
+function mapUi(name, args, ctx) {
+  const { userId } = ctx
+  switch (name) {
+    case 'ui_navigation': return ['ui.navigation', { userId }]
+    case 'ui_home': return ['ui.home', { userId }]
+    case 'ui_board': return ['ui.board', { userId }]
+    case 'ui_item': return ['ui.item', { userId, itemId: args.itemId }]
+    case 'ui_spaces': return ['ui.spaces', { userId }]
+    case 'ui_agents': return ['ui.agents', { userId }]
+    case 'ui_routines': return ['ui.routines', { userId }]
+    case 'ui_memory': return ['ui.memory', { userId, scope: args.scope || {} }]
+    case 'ui_settings': return ['ui.settings', { userId }]
+    case 'ui_tokens': return ['ui.tokens', {}]
+    default: return null
+  }
+}
+
 function mapTool(name, args, ctx) {
   const { userId, companyId } = ctx
   const common = companyId ? { userId, companyId } : { userId }
@@ -488,8 +518,8 @@ function toolResponse(id, out) {
   return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(out.data) }], isError: false } }
 }
 
-export function createMcpServer({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
-  if (!service && !agentsService && !routinesService && !boardService && !accessService && !learningService && !backupService) throw new Error('createMcpServer requiere al menos un servicio')
+export function createMcpServer({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, uiService, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
+  if (!service && !agentsService && !routinesService && !boardService && !accessService && !learningService && !backupService && !uiService) throw new Error('createMcpServer requiere al menos un servicio')
   const tools = [
     ...(service ? SPACES_TOOLS : []),
     ...(agentsService ? AGENTS_TOOLS : []),
@@ -498,6 +528,7 @@ export function createMcpServer({ service, agentsService, routinesService, board
     ...(accessService ? ACCESS_TOOLS : []),
     ...(learningService ? LEARNING_TOOLS : []),
     ...(backupService ? BACKUP_TOOLS : []),
+    ...(uiService ? UI_TOOLS : []),
   ]
 
   function handleMessage(msg) {
@@ -545,6 +576,9 @@ export function createMcpServer({ service, agentsService, routinesService, board
       } else if (backupService && name && name.startsWith('backup_')) {
         svc = backupService
         mapped = mapBackup(name, args, ctx)
+      } else if (uiService && name && name.startsWith('ui_')) {
+        svc = uiService
+        mapped = mapUi(name, args, ctx)
       }
       if (!mapped) return rpcError(id, -32602, `herramienta desconocida: ${name}`)
       const [operation, opParams] = mapped

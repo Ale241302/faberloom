@@ -9,6 +9,7 @@ import { AccessService } from '../access/index.js'
 import { LearningService } from '../learning/index.js'
 import { BackupService } from '../backup/index.js'
 import { offsiteRunnerFromEnv } from '../backup/offsite.js'
+import { UiService } from '../ui/index.js'
 import { repositoryFromEnv } from '../store/from-env.js'
 import { blobStoreFromEnv } from '../store/blob.js'
 import { startHttp } from './http.js'
@@ -104,6 +105,8 @@ if (backupVerifyMs > 0) {
   }, backupVerifyMs).unref?.()
 }
 
+const uiService = new UiService({ spaces: service, agents: agentsService, routines: routinesService, board: boardService, access: accessService, learning: learningService, backup: backupService })
+
 startHttp({
   service,
   agentsService,
@@ -112,6 +115,7 @@ startHttp({
   accessService,
   learningService,
   backupService,
+  uiService,
   gatewayKey: process.env.FABERLOOM_GATEWAY_KEY || '',
   defaultUserId: process.env.FABERLOOM_USER_ID || 'anon',
   port: Number(process.env.FABERLOOM_PORT || 8090),

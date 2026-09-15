@@ -9,6 +9,7 @@ import { AccessService } from '../access/index.js'
 import { LearningService } from '../learning/index.js'
 import { BackupService } from '../backup/index.js'
 import { offsiteRunnerFromEnv } from '../backup/offsite.js'
+import { UiService } from '../ui/index.js'
 import { repositoryFromEnv } from '../store/from-env.js'
 import { blobStoreFromEnv } from '../store/blob.js'
 import { createMcpServer } from './server.js'
@@ -73,6 +74,7 @@ const server = createMcpServer({
   accessService,
   learningService,
   backupService,
+  uiService: new UiService({ spaces: service, agents: agentsService, routines: routinesService, board: boardService, access: accessService, learning: learningService, backup: backupService }),
   defaultUserId: process.env.FABERLOOM_USER_ID || 'anon',
 })
 

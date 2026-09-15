@@ -2,6 +2,8 @@ import http from 'node:http'
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 
 import { createMcpServer } from './server.js'
+import { renderConsole } from '../ui/render.js'
+import { TOKENS, tokensToCss } from '../ui/tokens.js'
 
 /**
  * Transporte MCP por HTTP (Streamable HTTP, subset práctico) sin dependencias.
@@ -24,9 +26,9 @@ function sendJson(res, status, payload, headers = {}) {
   res.end(body)
 }
 
-export function createHttpHandler({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, gatewayKey = '', defaultUserId = 'anon', sessions = new Map() } = {}) {
-  if (!service && !agentsService && !routinesService && !boardService && !accessService && !learningService && !backupService) throw new Error('createHttpHandler requiere al menos un servicio')
-  const mcp = createMcpServer({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, defaultUserId })
+export function createHttpHandler({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, uiService, gatewayKey = '', defaultUserId = 'anon', sessions = new Map() } = {}) {
+  if (!service && !agentsService && !routinesService && !boardService && !accessService && !learningService && !backupService && !uiService) throw new Error('createHttpHandler requiere al menos un servicio')
+  const mcp = createMcpServer({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, uiService, defaultUserId })
 
   const readBody = (req) =>
     new Promise((resolve, reject) => {
@@ -53,6 +55,24 @@ export function createHttpHandler({ service, agentsService, routinesService, boa
 
     if (req.method === 'GET' && url.pathname === '/healthz') {
       return sendJson(res, 200, { ok: true, service: 'faberloom', spaces: true, sessions: sessions.size })
+    }
+
+    // Tokens de identidad y consola de solo lectura.
+    if (url.pathname === '/ui/tokens.css') {
+      res.writeHead(200, { 'content-type': 'text/css; charset=utf-8' })
+      return res.end(tokensToCss(TOKENS))
+    }
+    if (url.pathname === '/ui/tokens') return sendJson(res, 200, TOKENS)
+    if (url.pathname === '/ui') {
+      if (!uiService) return sendJson(res, 404, { error: 'not_found' })
+      const key = url.searchParams.get('key') || req.headers['x-faberloom-gateway-key'] || ''
+      if (gatewayKey && !safeEqual(key, gatewayKey)) return sendJson(res, 401, { error: 'unauthorized' })
+      const uiUser = req.headers['x-faberloom-user-id'] || req.headers['x-forwarded-user-email'] || process.env.FABERLOOM_UI_USER || defaultUserId
+      const nav = uiService.run('ui.navigation', { userId: uiUser }).data
+      const board = uiService.run('ui.board', { userId: uiUser }).data
+      const settings = uiService.run('ui.settings', { userId: uiUser }).data
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' })
+      return res.end(renderConsole({ nav, board, settings }))
     }
 
     // Entrada de eventos reales (correo/servicio) que el host reenvía.
@@ -137,8 +157,8 @@ export function createHttpHandler({ service, agentsService, routinesService, boa
   }
 }
 
-export function startHttp({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, gatewayKey, defaultUserId, port = Number(process.env.FABERLOOM_PORT || 8090), host = '0.0.0.0' } = {}) {
-  const handler = createHttpHandler({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, gatewayKey, defaultUserId })
+export function startHttp({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, uiService, gatewayKey, defaultUserId, port = Number(process.env.FABERLOOM_PORT || 8090), host = '0.0.0.0' } = {}) {
+  const handler = createHttpHandler({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, uiService, gatewayKey, defaultUserId })
   const server = http.createServer((req, res) => {
     Promise.resolve(handler(req, res)).catch((e) => {
       process.stderr.write(`[faberloom-mcp-http] error: ${e?.message}\n`)

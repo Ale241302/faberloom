@@ -43,6 +43,9 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
 - **Operación y respaldo** (E8): exportación cifrada del conocimiento con
   manifiesto, verificación, restauración en **modo detenido** con revalidación de
   permisos, y procedimiento de actualización.
+- **UI y distribución** (E9): capa de proyección (`ui_*`) para las pantallas,
+  **tokens de identidad**, consola de solo lectura en `GET /ui` y distribución por
+  navegador (piloto) o servidor permanente.
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).
