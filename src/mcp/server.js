@@ -385,7 +385,7 @@ export function createMcpServer({ service, agentsService, routinesService, defau
       } else if (agentsService && name && (name.startsWith('models_') || name.startsWith('templates_') || name.startsWith('agents_') || name.startsWith('tools_'))) {
         svc = agentsService
         mapped = mapAgents(name, args, ctx)
-      } else if (routinesService && name && (name.startsWith('routines_') || name.startsWith('executions_'))) {
+      } else if (routinesService && name && (name.startsWith('routines_') || name.startsWith('executions_') || name.startsWith('events_'))) {
         svc = routinesService
         mapped = mapRoutines(name, args, ctx)
       }
