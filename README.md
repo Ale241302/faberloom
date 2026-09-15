@@ -65,8 +65,9 @@ node --test
 - El núcleo es **independiente del harness**: no asume que un directorio técnico
   sea un espacio de negocio.
 - Backends disponibles: JSON y **SQLite** (`node:sqlite`, experimental en Node 22).
-- Pendiente: integración con la UI del harness y vínculo real de conversaciones y
-  archivos a espacios.
+- **Desplegado e integrado** con el gateway del harness; la identidad y la empresa
+  llegan por cabecera. El contenido de archivos/conversaciones se guarda en el
+  almacén de blobs (`FABERLOOM_BLOB_DIR`).
 
 ## Despliegue (contenedor)
 

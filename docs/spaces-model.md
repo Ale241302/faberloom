@@ -184,10 +184,27 @@ Reglas:
 - Los vínculos se persisten con el espacio (tabla `space_links` en SQLite; dentro
   del snapshot en JSON/memoria).
 
-## 10. Fuera de este corte (siguientes)
+**Contenido guardado:** un vínculo puede crearse con `content`:
 
-- Integración con la **UI** del harness (navegación por espacios) y montaje en el
-  despliegue. La identidad y la empresa **ya las aporta el MCP** por cabecera
-  (`X-Faberloom-User-Id`, `X-MWT-Client-ID`), así que es un paso de despliegue.
-- Resolver `fileRef` (almacenamiento real) y enlazar el contenido de una
-  conversación, no solo su referencia.
+- **Archivos:** `content` en bytes (el MCP lo recibe en base64) → se guarda en el
+  almacén de blobs; el vínculo expone `size`, `sha256`, `mediaType` y `fileName`.
+- **Conversaciones:** `content` texto/JSON → se guarda y `spaces.readLinkContent`
+  devuelve el texto y su JSON.
+
+Almacén de blobs: `MemoryBlobStore` (pruebas) o `FsBlobStore`
+(`FABERLOOM_BLOB_DIR`). `readLinkContent` exige `view`; `unlink` borra el contenido
+y `ref` puede ser externo (sin `content`) si se prefiere.
+
+## 10. Estado y límites
+
+Desplegado como contenedor (`faberloom-mcp`, red `harness-net`, volumen
+`faberloom-data`) e integrado en el gateway del harness: cada `dsh` por usuario
+arranca con el MCP `faberloom` y su identidad/empresa
+(`X-Faberloom-User-Id`, `X-MWT-Client-ID`). **No hay pendientes funcionales de E3.**
+
+Mejoras opcionales (no bloquean):
+
+- Almacén de blobs en MinIO/S3 en vez del filesystem.
+- Escritura incremental por campo (hoy por espacio/vínculo completo).
+- ACL heredada comprobada también por ancestro al listar (hoy el rol efectivo ya
+  la aplica).
