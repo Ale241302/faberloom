@@ -7,6 +7,7 @@ import { RoutinesService } from '../routines/index.js'
 import { BoardService } from '../board/index.js'
 import { AccessService } from '../access/index.js'
 import { LearningService } from '../learning/index.js'
+import { BackupService } from '../backup/index.js'
 import { repositoryFromEnv } from '../store/from-env.js'
 import { blobStoreFromEnv } from '../store/blob.js'
 import { startHttp } from './http.js'
@@ -72,6 +73,14 @@ if (dispatchMs > 0) {
   }, dispatchMs).unref?.()
 }
 
+const backupService = new BackupService({
+  repository,
+  blobStore,
+  key: process.env.FABERLOOM_BACKUP_KEY || null,
+  // Al restaurar se revalidan permisos: una concesión de un espacio ya no accesible se revoca.
+  recheckGrant: (g) => (g.context && g.context.spaceId ? service.checkPermission(g.context.spaceId, g.ownerId, 'view') : { allowed: true }),
+})
+
 startHttp({
   service,
   agentsService,
@@ -79,6 +88,7 @@ startHttp({
   boardService,
   accessService,
   learningService,
+  backupService,
   gatewayKey: process.env.FABERLOOM_GATEWAY_KEY || '',
   defaultUserId: process.env.FABERLOOM_USER_ID || 'anon',
   port: Number(process.env.FABERLOOM_PORT || 8090),

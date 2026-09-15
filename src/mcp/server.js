@@ -412,6 +412,25 @@ function mapLearning(name, args, ctx) {
   }
 }
 
+const BACKUP_TOOLS = [
+  { name: 'backup_export', description: 'Exporta el conocimiento a un respaldo con manifiesto (y cifrado si hay clave).', inputSchema: { type: 'object', properties: { label: { type: 'string' } } } },
+  { name: 'backup_list', description: 'Lista los respaldos registrados.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'backup_verify', description: 'Verifica integridad (hash y manifiesto).', inputSchema: { type: 'object', properties: { backupId: { type: 'string' } }, required: ['backupId'] } },
+  { name: 'backup_preview_restore', description: 'Vista previa de restauración (sin aplicar).', inputSchema: { type: 'object', properties: { backupId: { type: 'string' } }, required: ['backupId'] } },
+  { name: 'backup_restore', description: 'Restaura en modo detenido (pausa trabajo y revalida permisos).', inputSchema: { type: 'object', properties: { backupId: { type: 'string' }, confirm: { type: 'boolean' } }, required: ['backupId'] } },
+]
+
+function mapBackup(name, args) {
+  switch (name) {
+    case 'backup_export': return ['backup.export', { label: args.label }]
+    case 'backup_list': return ['backup.list', {}]
+    case 'backup_verify': return ['backup.verify', { backupId: args.backupId }]
+    case 'backup_preview_restore': return ['backup.previewRestore', { backupId: args.backupId }]
+    case 'backup_restore': return ['backup.restore', { backupId: args.backupId, confirm: args.confirm === true }]
+    default: return null
+  }
+}
+
 function mapTool(name, args, ctx) {
   const { userId, companyId } = ctx
   const common = companyId ? { userId, companyId } : { userId }
@@ -469,8 +488,8 @@ function toolResponse(id, out) {
   return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(out.data) }], isError: false } }
 }
 
-export function createMcpServer({ service, agentsService, routinesService, boardService, accessService, learningService, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
-  if (!service && !agentsService && !routinesService && !boardService && !accessService && !learningService) throw new Error('createMcpServer requiere al menos un servicio')
+export function createMcpServer({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
+  if (!service && !agentsService && !routinesService && !boardService && !accessService && !learningService && !backupService) throw new Error('createMcpServer requiere al menos un servicio')
   const tools = [
     ...(service ? SPACES_TOOLS : []),
     ...(agentsService ? AGENTS_TOOLS : []),
@@ -478,6 +497,7 @@ export function createMcpServer({ service, agentsService, routinesService, board
     ...(boardService ? BOARD_TOOLS : []),
     ...(accessService ? ACCESS_TOOLS : []),
     ...(learningService ? LEARNING_TOOLS : []),
+    ...(backupService ? BACKUP_TOOLS : []),
   ]
 
   function handleMessage(msg) {
@@ -522,6 +542,9 @@ export function createMcpServer({ service, agentsService, routinesService, board
       } else if (learningService && name && name.startsWith('learning_')) {
         svc = learningService
         mapped = mapLearning(name, args, ctx)
+      } else if (backupService && name && name.startsWith('backup_')) {
+        svc = backupService
+        mapped = mapBackup(name, args, ctx)
       }
       if (!mapped) return rpcError(id, -32602, `herramienta desconocida: ${name}`)
       const [operation, opParams] = mapped

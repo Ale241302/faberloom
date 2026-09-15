@@ -24,9 +24,9 @@ function sendJson(res, status, payload, headers = {}) {
   res.end(body)
 }
 
-export function createHttpHandler({ service, agentsService, routinesService, boardService, accessService, learningService, gatewayKey = '', defaultUserId = 'anon', sessions = new Map() } = {}) {
-  if (!service && !agentsService && !routinesService && !boardService && !accessService && !learningService) throw new Error('createHttpHandler requiere al menos un servicio')
-  const mcp = createMcpServer({ service, agentsService, routinesService, boardService, accessService, learningService, defaultUserId })
+export function createHttpHandler({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, gatewayKey = '', defaultUserId = 'anon', sessions = new Map() } = {}) {
+  if (!service && !agentsService && !routinesService && !boardService && !accessService && !learningService && !backupService) throw new Error('createHttpHandler requiere al menos un servicio')
+  const mcp = createMcpServer({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, defaultUserId })
 
   const readBody = (req) =>
     new Promise((resolve, reject) => {
@@ -137,8 +137,8 @@ export function createHttpHandler({ service, agentsService, routinesService, boa
   }
 }
 
-export function startHttp({ service, agentsService, routinesService, boardService, accessService, learningService, gatewayKey, defaultUserId, port = Number(process.env.FABERLOOM_PORT || 8090), host = '0.0.0.0' } = {}) {
-  const handler = createHttpHandler({ service, agentsService, routinesService, boardService, accessService, learningService, gatewayKey, defaultUserId })
+export function startHttp({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, gatewayKey, defaultUserId, port = Number(process.env.FABERLOOM_PORT || 8090), host = '0.0.0.0' } = {}) {
+  const handler = createHttpHandler({ service, agentsService, routinesService, boardService, accessService, learningService, backupService, gatewayKey, defaultUserId })
   const server = http.createServer((req, res) => {
     Promise.resolve(handler(req, res)).catch((e) => {
       process.stderr.write(`[faberloom-mcp-http] error: ${e?.message}\n`)

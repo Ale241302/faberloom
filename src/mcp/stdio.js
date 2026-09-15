@@ -7,6 +7,7 @@ import { RoutinesService } from '../routines/index.js'
 import { BoardService } from '../board/index.js'
 import { AccessService } from '../access/index.js'
 import { LearningService } from '../learning/index.js'
+import { BackupService } from '../backup/index.js'
 import { repositoryFromEnv } from '../store/from-env.js'
 import { blobStoreFromEnv } from '../store/blob.js'
 import { createMcpServer } from './server.js'
@@ -55,6 +56,13 @@ routinesService.registerStepHandler('propose_review', (ctx) =>
     : { output: 'propuesta creada', review: { title: ctx.step.instruction || 'Revisar resultado', kind: 'document', result: ctx.ex.context, evidence: { ref: `exec:${ctx.ex.id}:${ctx.step.id}` } } },
 )
 
+const backupService = new BackupService({
+  repository,
+  blobStore,
+  key: process.env.FABERLOOM_BACKUP_KEY || null,
+  recheckGrant: (g) => (g.context && g.context.spaceId ? service.checkPermission(g.context.spaceId, g.ownerId, 'view') : { allowed: true }),
+})
+
 const server = createMcpServer({
   service,
   agentsService,
@@ -62,6 +70,7 @@ const server = createMcpServer({
   boardService,
   accessService,
   learningService,
+  backupService,
   defaultUserId: process.env.FABERLOOM_USER_ID || 'anon',
 })
 

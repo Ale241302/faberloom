@@ -40,6 +40,9 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
 - **Memoria, aprendizaje y autonomía** (E7): enseñanzas versionadas con alcance y
   revocación, desempeño contextual sin confianza inventada y **concesiones**
   separadas (aprobar no concede permiso).
+- **Operación y respaldo** (E8): exportación cifrada del conocimiento con
+  manifiesto, verificación, restauración en **modo detenido** con revalidación de
+  permisos, y procedimiento de actualización.
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).

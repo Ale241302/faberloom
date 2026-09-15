@@ -121,6 +121,9 @@ export class SqliteRepository {
       CREATE TABLE IF NOT EXISTS grants (
         id TEXT PRIMARY KEY, owner_id TEXT, agent_id TEXT, action TEXT, status TEXT, data TEXT, created_at TEXT, updated_at TEXT
       );
+      CREATE TABLE IF NOT EXISTS backups (
+        id TEXT PRIMARY KEY, ref TEXT, size INTEGER, sha256 TEXT, manifest TEXT, created_at TEXT
+      );
     `)
     this.#ensureColumns('space_links', {
       stored: 'INTEGER NOT NULL DEFAULT 0',
@@ -347,7 +350,16 @@ export class SqliteRepository {
       updatedAt: r.updated_at,
     }))
 
-    return { version: 1, spaces, personalIndex, links, models, agents, selections, agentExecutions, evidence, routines, runs, effects, sources, locks, board, teachings, teachingUsages, outcomes, grants }
+    const backups = this.#db.prepare('SELECT * FROM backups ORDER BY created_at, id').all().map((r) => ({
+      id: r.id,
+      ref: r.ref,
+      size: r.size,
+      sha256: r.sha256,
+      manifest: r.manifest ? JSON.parse(r.manifest) : null,
+      createdAt: r.created_at,
+    }))
+
+    return { version: 1, spaces, personalIndex, links, models, agents, selections, agentExecutions, evidence, routines, runs, effects, sources, locks, board, teachings, teachingUsages, outcomes, grants, backups }
   }
 
   // ── Escritura incremental ──────────────────────────────────────────
@@ -592,7 +604,17 @@ export class SqliteRepository {
         this.#db.exec('DELETE FROM grants;')
         for (const g of state.grants || []) this.saveGrant(g)
       }
+      if (state.backups !== undefined) {
+        this.#db.exec('DELETE FROM backups;')
+        for (const b of state.backups || []) this.saveBackup(b)
+      }
     })
+  }
+
+  saveBackup(b) {
+    this.#db
+      .prepare('INSERT OR REPLACE INTO backups (id, ref, size, sha256, manifest, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+      .run(b.id, b.ref ?? null, b.size ?? null, b.sha256 ?? null, b.manifest ? JSON.stringify(b.manifest) : null, b.createdAt ?? null)
   }
 
   saveTeaching(t) {
