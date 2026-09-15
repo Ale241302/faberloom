@@ -54,6 +54,28 @@ export function createHttpHandler({ service, agentsService, routinesService, gat
     if (req.method === 'GET' && url.pathname === '/healthz') {
       return sendJson(res, 200, { ok: true, service: 'faberloom', spaces: true, sessions: sessions.size })
     }
+
+    // Entrada de eventos reales (correo/servicio) que el host reenvía.
+    if (url.pathname === '/events') {
+      if (gatewayKey && !safeEqual(req.headers['x-faberloom-gateway-key'] || '', gatewayKey)) {
+        return sendJson(res, 401, { error: 'unauthorized', code: 'GATEWAY_KEY' })
+      }
+      if (!routinesService) return sendJson(res, 404, { error: 'not_found' })
+      if (req.method !== 'POST') {
+        res.writeHead(405, { allow: 'POST' })
+        return res.end()
+      }
+      let payload
+      try {
+        payload = JSON.parse((await readBody(req)) || 'null')
+      } catch {
+        return sendJson(res, 400, { error: 'invalid_json' })
+      }
+      const event = Array.isArray(payload) ? payload[0] : payload
+      const out = await Promise.resolve(routinesService.run('events.ingest', { event }))
+      return sendJson(res, 200, out.ok ? out.data : { error: out.error })
+    }
+
     if (url.pathname !== '/mcp') return sendJson(res, 404, { error: 'not_found' })
 
     if (gatewayKey && !safeEqual(req.headers['x-faberloom-gateway-key'] || '', gatewayKey)) {

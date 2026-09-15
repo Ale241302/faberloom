@@ -44,6 +44,30 @@ function normalizeSteps(steps) {
   })
 }
 
+function normalizeTrigger(t) {
+  if (typeof t === 'string') return { type: t }
+  if (!t || typeof t !== 'object') fail('INVALID_TRIGGER', 'disparador inválido')
+  const type = t.type || 'manual'
+  return {
+    type,
+    source: t.source || (type === 'email' ? 'email' : null),
+    match: t.match || null,
+    at: t.at || null,
+    intervalMinutes: t.intervalMinutes || null,
+  }
+}
+
+function normalizeEvent(event, receivedAt) {
+  const ev = typeof event === 'string' ? { type: event } : { ...(event || {}) }
+  return {
+    ...ev,
+    type: ev.type || 'event',
+    source: ev.source || (ev.from || ev.subject ? 'email' : 'event'),
+    key: ev.key ?? ev.id ?? null,
+    receivedAt: ev.receivedAt || receivedAt,
+  }
+}
+
 function detectCycle(steps) {
   const byId = new Map(steps.map((s) => [s.id, s]))
   const state = new Map() // 0=por visitar, 1=en pila, 2=listo
@@ -119,7 +143,8 @@ export class RoutinesService {
       spaceId,
       version: 1,
       status: 'draft',
-      triggers: [...triggers],
+      triggers: (triggers || []).map(normalizeTrigger),
+      triggerState: {},
       inputs: [...inputs],
       steps: normalizeSteps(steps),
       expectedResult,
@@ -154,7 +179,7 @@ export class RoutinesService {
       }
     }
     if (patch.triggers !== undefined) {
-      r.triggers = [...patch.triggers]
+      r.triggers = (patch.triggers || []).map(normalizeTrigger)
       changes.push('triggers')
     }
     if (patch.inputs !== undefined) {
@@ -293,22 +318,141 @@ export class RoutinesService {
     return this.#advanceFrom(ex, routine, index)
   }
 
-  /** Despachador persistente: reanuda esperas por evento o por tiempo. */
+  /** Despachador persistente: reanuda esperas por evento/tiempo y lanza disparos programados. */
   tick({ now = null, events = [] } = {}) {
     const at = now || this.#now()
-    const results = []
+    const resumed = []
     for (const ex of [...this.#runs.values()]) {
       if (ex.status !== 'waiting' || !ex.waitState) continue
       const event = events.find((ev) => matches(ex.waitState, ev))
       if (event) {
-        results.push(this.resumeExecution(ex.id, { event }))
+        resumed.push(this.resumeExecution(ex.id, { event }))
         continue
       }
       if (ex.waitState.timeoutAt && new Date(ex.waitState.timeoutAt).getTime() <= new Date(at).getTime()) {
-        results.push(this.#failWait(ex, 'WAIT_TIMEOUT'))
+        resumed.push(this.#failWait(ex, 'WAIT_TIMEOUT'))
       }
     }
-    return results
+    return { now: at, resumed, started: this.#fireScheduled(at) }
+  }
+
+  /** Entrada real de eventos (correo/servicio): reanuda esperas y dispara rutinas. */
+  ingestEvent(event = {}) {
+    const ev = normalizeEvent(event, this.#now())
+    const resumed = []
+    for (const ex of [...this.#runs.values()]) {
+      if (ex.status !== 'waiting' || !ex.waitState) continue
+      if (matches(ex.waitState, ev)) resumed.push(this.resumeExecution(ex.id, { event: ev }))
+    }
+    const started = []
+    for (const r of this.#routines.values()) {
+      if (r.status !== 'active' || !this.#triggersMatch(r, ev)) continue
+      try {
+        started.push(
+          this.startExecution({
+            routineId: r.id,
+            trigger: ev,
+            idempotencyKey: ev.id ? `${r.id}:${ev.id}` : null,
+            sources: [{ channel: ev.source || ev.type, ref: ev.id || null }],
+            context: ev.data || {},
+          }),
+        )
+      } catch {
+        /* rutina no ejecutable con este evento: se ignora, no rompe el despacho */
+      }
+    }
+    return { event: ev, resumed, started }
+  }
+
+  /** Vista previa de migración de una ejecución a la versión vigente de su rutina. */
+  previewMigration({ executionId, rename = {} } = {}) {
+    return this.#migrationReport(executionId, rename)
+  }
+
+  /** Migra explícitamente una ejecución en curso a otra versión (con confirmación). */
+  migrateExecution({ executionId, confirm = true, rename = {} } = {}) {
+    const ex = this.#requireRun(executionId)
+    if (RUN_TERMINAL.includes(ex.status)) fail('MIGRATION_NOT_ALLOWED', 'la ejecución ya terminó')
+    const routine = this.#requireRoutine(ex.routineId)
+    if (routine.version === ex.routineVersion) {
+      return { execution: this.#runView(ex), migrated: false, report: { ok: true, sameVersion: true, fromVersion: ex.routineVersion, toVersion: routine.version } }
+    }
+    const report = this.#migrationReport(executionId, rename)
+    if (!report.ok) fail('MIGRATION_INCOMPATIBLE', JSON.stringify(report))
+    if (!confirm) return { execution: this.#runView(ex), migrated: false, report }
+
+    const fromVersion = ex.routineVersion
+    ex.routineVersion = routine.version
+    ex.steps = ex.steps.map((st) => ({ ...st, stepId: rename[st.stepId] || st.stepId }))
+    for (const s of routine.steps) {
+      if (!ex.steps.some((x) => x.stepId === s.id)) {
+        ex.steps.push({ stepId: s.id, status: 'pending', attempts: 0, output: null, error: null, ref: null, startedAt: null, finishedAt: null })
+      }
+    }
+    ex.migrations = [...(ex.migrations || []), { from: fromVersion, to: routine.version, rename, at: this.#now() }]
+    ex.updatedAt = this.#now()
+    this.#persistRun(ex)
+    return { execution: this.#runView(ex), migrated: true, report }
+  }
+
+  #migrationReport(executionId, rename = {}) {
+    const ex = this.#requireRun(executionId)
+    const routine = this.#requireRoutine(ex.routineId)
+    const newIds = new Set(routine.steps.map((s) => s.id))
+    const pending = ex.steps.filter((s) => s.status !== 'done').map((s) => s.stepId)
+    const unmapped = pending.filter((id) => !newIds.has(rename[id] || id))
+    return { ok: unmapped.length === 0, fromVersion: ex.routineVersion, toVersion: routine.version, pendingSteps: pending, unmappedSteps: unmapped }
+  }
+
+  #fireScheduled(at) {
+    const started = []
+    const atMs = new Date(at).getTime()
+    for (const r of this.#routines.values()) {
+      if (r.status !== 'active') continue
+      r.triggerState = r.triggerState || {}
+      r.triggers.forEach((t, i) => {
+        try {
+          if (t.type === 'date' && t.at && atMs >= new Date(t.at).getTime() && r.triggerState[i] !== t.at) {
+            started.push(this.startExecution({ routineId: r.id, trigger: { type: 'date', at: t.at }, idempotencyKey: `${r.id}:date:${t.at}`, sources: [{ channel: 'schedule', ref: t.at }] }))
+            r.triggerState[i] = t.at
+            this.#persistRoutine(r)
+          } else if (t.type === 'recurrence' && t.intervalMinutes) {
+            const last = r.triggerState[i] ? new Date(r.triggerState[i]).getTime() : 0
+            if (atMs - last >= t.intervalMinutes * 60000) {
+              const bucket = Math.floor(atMs / (t.intervalMinutes * 60000))
+              started.push(this.startExecution({ routineId: r.id, trigger: { type: 'recurrence', intervalMinutes: t.intervalMinutes }, idempotencyKey: `${r.id}:rec:${bucket}`, sources: [{ channel: 'schedule' }] }))
+              r.triggerState[i] = at
+              this.#persistRoutine(r)
+            }
+          }
+        } catch {
+          /* rutina no ejecutable: se ignora */
+        }
+      })
+    }
+    return started
+  }
+
+  #triggersMatch(routine, ev) {
+    return (routine.triggers || []).some((t) => {
+      if (t.type !== 'event' && t.type !== 'email') return false
+      if (t.type === 'email' && ev.source !== 'email') return false
+      if (t.source && t.source !== ev.source) return false
+      return this.#matchFields(t.match, ev)
+    })
+  }
+
+  #matchFields(match, ev) {
+    if (!match) return true
+    for (const [key, expected] of Object.entries(match)) {
+      const actual = key.includes('.') ? key.split('.').reduce((o, p) => (o == null ? undefined : o[p]), ev) : ev[key]
+      if (expected && typeof expected === 'object' && expected.regex) {
+        if (!new RegExp(expected.regex, 'i').test(String(actual ?? ''))) return false
+      } else if (String(actual ?? '') !== String(expected)) {
+        return false
+      }
+    }
+    return true
   }
 
   run(operation, params = {}) {
@@ -346,6 +490,9 @@ export class RoutinesService {
       case 'executions.advance': return this.advanceExecution(params.executionId)
       case 'executions.resume': return this.resumeExecution(params.executionId, { event: params.event })
       case 'executions.tick': return this.tick(params)
+      case 'executions.migrate': return this.migrateExecution(params)
+      case 'executions.previewMigration': return this.previewMigration(params)
+      case 'events.ingest': return this.ingestEvent(params.event || params)
       case 'executions.effects': return this.listEffects(params)
       case 'stepHandlers.register': return this.registerStepHandler(params.type, params.handler)
       default: return fail('UNKNOWN_OPERATION', operation)

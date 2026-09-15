@@ -30,7 +30,9 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
   (`executeTool`, `delegate`, `recordOutcome`/`evidence`), con handlers síncronos
   o asíncronos.
 - **Rutinas y ejecución persistente** (E5): rutinas versionadas, idempotencia,
-  esperas con revalidación, reconciliación de timeouts y despachador `tick`.
+  esperas con revalidación, reconciliación de timeouts, despachador `tick`,
+  **disparadores reales** (correo/servicio vía `POST /events`) y **migración de
+  versión** de una ejecución en curso.
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).

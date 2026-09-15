@@ -58,6 +58,8 @@ y `executions.start` **rechazan** si falta algo (`ROUTINE_NOT_EXECUTABLE` /
 | `routines.validate` / `activate` / `pause` | Ciclo de vida |
 | `executions.start` / `get` / `list` | Inicio (idempotente) |
 | `executions.advance` / `resume` / `tick` | Avance, reanudación y despacho |
+| `executions.migrate` / `previewMigration` | Migración explícita de versión |
+| `events.ingest` | Entrada real de eventos (correo/servicio) |
 | `executions.effects` | Libro de efectos de la ejecución |
 | `stepHandlers.register` | Handlers del host (no por MCP) |
 
@@ -79,7 +81,41 @@ por dos canales), **F08** (recorrido completo), **F09** (revalidación de precio
 reconciliado) y **F12** (cancelar seguimiento obsoleto), además de ciclos y
 dependencias inválidas.
 
-## 8. Fuera de alcance (siguiente)
+## 8. Disparadores reales (eventos)
 
-- Disparadores reales de correo/servicio (el host los traduce a `events`).
-- Migración explícita de una ejecución en curso a una versión nueva de la rutina.
+Una rutina declara `triggers`:
+
+- `manual`: solo por instrucción explícita.
+- `event` / `email`: se disparan con un evento entrante. `source` filtra el canal
+  (p. ej. `email`) y `match` compara campos con igualdad o expresión regular:
+  `{ subject: { regex: 'orden de compra' }, from: 'cliente@x.com' }`.
+- `date`: se dispara una vez cuando `now >= at`.
+- `recurrence`: se dispara cada `intervalMinutes`.
+
+`events.ingest(evento)` (y el endpoint HTTP `POST /events`) recibe eventos reales
+que el host traduce desde correo/servicio (p. ej. un puente IMAP o una regla de
+correo). Reanuda las esperas que coinciden y **lanza** las rutinas cuyos
+disparadores coinciden, con **idempotencia por id de mensaje** (el mismo correo no
+abre dos casos). `executions.tick({ now, events })` evalúa además fecha y
+recurrencia.
+
+```bash
+# un puente de correo reenvía el mensaje al host:
+curl -sS -X POST https://faberl-mcp/events \
+  -H "X-Faberloom-Gateway-Key: $KEY" -H 'Content-Type: application/json' \
+  -d '{"type":"event","source":"email","id":"msg-1","from":"cliente@x.com","subject":"Orden de Compra 123"}'
+```
+
+## 9. Migración de versiones
+
+`executions.previewMigration` informa compatibilidad (pasos pendientes que ya no
+existen → `unmappedSteps`). `executions.migrate` **solo** migra con confirmación,
+conserva los pasos completados, añade los nuevos como pendientes y admite un mapa
+`rename` para pasos renombrados. Si algún paso pendiente no existe y no se mapea →
+`MIGRATION_INCOMPATIBLE` (no se migra a ciegas).
+
+## 10. Fuera de alcance (siguiente)
+
+- Un **puente de correo** concreto (IMAP/sieve/webhook del proveedor) vive fuera
+  del núcleo; solo tiene que llamar a `POST /events` o `events.ingest`.
+- Bloqueo/optimistic-concurrency entre varios despachadores simultáneos.

@@ -258,6 +258,9 @@ const ROUTINES_TOOLS = [
   { name: 'executions_resume', description: 'Reanuda una espera (evento).', inputSchema: { type: 'object', properties: { executionId: { type: 'string' }, event: { type: 'object' } }, required: ['executionId'] } },
   { name: 'executions_tick', description: 'Despachador: reanuda esperas por evento o tiempo.', inputSchema: { type: 'object', properties: { now: { type: 'string' }, events: { type: 'array' } } } },
   { name: 'executions_effects', description: 'Efectos registrados de una ejecución.', inputSchema: { type: 'object', properties: { executionId: { type: 'string' } } } },
+  { name: 'executions_preview_migration', description: 'Vista previa de migración a la versión vigente.', inputSchema: { type: 'object', properties: { executionId: { type: 'string' }, rename: { type: 'object' } }, required: ['executionId'] } },
+  { name: 'executions_migrate', description: 'Migra explícitamente una ejecución en curso a la versión vigente de su rutina.', inputSchema: { type: 'object', properties: { executionId: { type: 'string' }, confirm: { type: 'boolean' }, rename: { type: 'object' } }, required: ['executionId'] } },
+  { name: 'events_ingest', description: 'Ingresa un evento real (correo/servicio): reanuda esperas y dispara rutinas.', inputSchema: { type: 'object', properties: { event: { type: 'object' } }, required: ['event'] } },
 ]
 
 function mapRoutines(name, args, ctx) {
@@ -280,6 +283,9 @@ function mapRoutines(name, args, ctx) {
     case 'executions_resume': return ['executions.resume', { executionId: args.executionId, event: args.event }]
     case 'executions_tick': return ['executions.tick', { now: args.now, events: args.events || [] }]
     case 'executions_effects': return ['executions.effects', { executionId: args.executionId }]
+    case 'executions_preview_migration': return ['executions.previewMigration', { executionId: args.executionId, rename: args.rename || {} }]
+    case 'executions_migrate': return ['executions.migrate', { executionId: args.executionId, confirm: args.confirm !== false, rename: args.rename || {} }]
+    case 'events_ingest': return ['events.ingest', { event: args.event || args }]
     default: return null
   }
 }
