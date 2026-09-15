@@ -46,7 +46,26 @@ Todas se invocan con `run(operation, params)` y devuelven `{ ok: true, data }` o
 
 Códigos de error: `INVALID_NAME`, `INVALID_OWNER`, `INVALID_USER`,
 `INVALID_CONTEXT_ITEM`, `PARENT_NOT_FOUND`, `SPACE_NOT_FOUND`, `ACCESS_DENIED`,
-`CYCLE`, `UNKNOWN_OPERATION`.
+`FORBIDDEN`, `INVALID_ROLE`, `INVALID_MEMBER`, `MEMBER_NOT_FOUND`, `CYCLE`,
+`UNKNOWN_OPERATION`.
+
+### Roles y permisos (ACL)
+
+Cada miembro tiene un rol: `owner`, `admin`, `editor` o `viewer` (el propietario
+siempre es `owner`).
+
+| Permiso | owner | admin | editor | viewer |
+|---|---|---|---|---|
+| `view` (leer y resolver contexto) | ✓ | ✓ | ✓ | ✓ |
+| `edit` (contenido del espacio) | ✓ | ✓ | ✓ | — |
+| `manage` (miembros y roles) | ✓ | ✓ | — | — |
+
+- `spaces.update` exige `edit`; si el patch toca `members`, exige `manage`.
+- `spaces.addMember`, `spaces.removeMember` y `spaces.setMemberRole` exigen
+  `manage`. Roles asignables: `admin`, `editor`, `viewer`.
+- No se puede quitar ni degradar al propietario.
+- Sin pertenencia → `ACCESS_DENIED`; rol insuficiente → `FORBIDDEN`.
+- `members` acepta `['u2']` (rol `editor`) o `[{ userId, role }]`.
 
 ## 3. Contexto efectivo
 
@@ -112,12 +131,23 @@ sin dependencias. Herramientas: `spaces_create`, `spaces_get`, `spaces_list`,
 Arranque: `FABERLOOM_DATA_FILE=/ruta/spaces.json node src/mcp/stdio.js`
 (o `npm run mcp`).
 
+### Transporte HTTP (identidad)
+
+`src/mcp/http.js` sirve el mismo protocolo por **HTTP** (`POST /mcp`) con
+`GET /healthz`. Identidad por cabecera `X-Faberloom-User-Id` (o
+`X-Forwarded-User-Email`); la cabecera manda sobre cualquier `userId` del cuerpo.
+Si `FABERLOOM_GATEWAY_KEY` está definido, se exige `X-Faberloom-Gateway-Key`
+(fail-closed), igual que el MCP de la consola. En `initialize` devuelve
+`Mcp-Session-Id`.
+
+Arranque: `FABERLOOM_PORT=8090 FABERLOOM_GATEWAY_KEY=... npm run mcp:http`.
+
 ## 9. Fuera de este corte (siguientes)
 
 - **Backend de datos** definitivo (SQLite/Postgres) y migraciones; hoy JSON.
-- **Transporte HTTP** del MCP con identidad por usuario/empresa (no solo stdio).
-- **ACL fina** (roles por espacio) y verificación de acceso a cada ancestro al
+- **Roles heredados por subespacio** y verificación de acceso a cada ancestro al
   resolver contexto.
+- **Identidad por empresa** (`X-MWT-Client-ID`) en el MCP HTTP, no solo el usuario.
 - Integración con la **UI** del harness (navegación por espacios) y con el login
   del gateway.
 - Vínculo real de **conversaciones y archivos** a espacios (más allá de la vista

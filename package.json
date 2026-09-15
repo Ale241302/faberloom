@@ -6,7 +6,8 @@
   "description": "FaberLoom — producto propio sobre DeepSeek Harness. Primer corte: Espacios y contexto (E3).",
   "scripts": {
     "test": "node --test",
-    "mcp": "node src/mcp/stdio.js"
+    "mcp": "node src/mcp/stdio.js",
+    "mcp:http": "node src/mcp/http-main.js"
   },
   "engines": {
     "node": ">=22"

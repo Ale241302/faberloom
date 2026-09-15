@@ -1,12 +1,12 @@
 import { randomUUID, createHash } from 'node:crypto'
 
 /**
- * E3 · Espacios y contexto (primer corte).
+ * E3 · Espacios y contexto.
  *
  * Núcleo independiente del harness: modelo de espacios, subespacios,
- * herencia/exclusiones, contexto efectivo, ámbito personal y vista previa de
- * cambio de audiencia. Es la lógica compartida que después consumen la UI y el
- * servidor MCP de FaberLoom mediante `run(operation, params)`.
+ * herencia/exclusiones, contexto efectivo, ámbito personal, audiencia y ACL por
+ * espacio. Es la lógica compartida que consumen la UI y el servidor MCP de
+ * FaberLoom mediante `run(operation, params)`.
  */
 
 export class SpacesError extends Error {
@@ -24,6 +24,14 @@ const uniq = (arr) => [...new Set(arr)]
 const ok = (data) => ({ ok: true, data })
 const err = (e) => ({ ok: false, error: { code: e.code, message: e.message } })
 
+/** Roles por espacio y qué permisos concede cada uno. */
+export const ROLES = ['owner', 'admin', 'editor', 'viewer']
+const PERMISSIONS = {
+  view: ['owner', 'admin', 'editor', 'viewer'],
+  edit: ['owner', 'admin', 'editor'],
+  manage: ['owner', 'admin'],
+}
+
 function normalizeContext(items) {
   if (!Array.isArray(items)) return []
   return items.map((it, i) => {
@@ -31,6 +39,19 @@ function normalizeContext(items) {
     if (!it.key) fail('INVALID_CONTEXT_ITEM', `context[${i}] sin key`)
     return { id: it.id || `ctx_${randomUUID()}`, key: it.key, value: it.value, source: it.source ?? null }
   })
+}
+
+/** Acepta `['u2']` o `[{ userId, role }]`; el propietario siempre es `owner`. */
+function normalizeMembers(ownerId, members) {
+  const map = new Map([[ownerId, 'owner']])
+  for (const m of Array.isArray(members) ? members : []) {
+    if (typeof m === 'string') {
+      if (m !== ownerId) map.set(m, 'editor')
+    } else if (m && m.userId) {
+      if (m.userId !== ownerId) map.set(m.userId, ROLES.includes(m.role) && m.role !== 'owner' ? m.role : 'editor')
+    }
+  }
+  return [...map.entries()].map(([userId, role]) => ({ userId, role }))
 }
 
 export class SpacesService {
@@ -72,7 +93,7 @@ export class SpacesService {
       parentId: parentId || null,
       inheritContext: inheritContext !== false,
       personal: false,
-      members: uniq([ownerId, ...(Array.isArray(members) ? members : [])]),
+      members: normalizeMembers(ownerId, members),
       context: normalizeContext(context),
       excluded: Array.isArray(excluded) ? [...excluded] : [],
       version: 1,
@@ -85,20 +106,21 @@ export class SpacesService {
 
   getSpace(spaceId, { userId } = {}) {
     const s = this.#require(spaceId)
-    this.#assertAccess(s, userId)
+    this.#assertAccess(s, userId, 'view')
     return this.#view(s)
   }
 
   listSpaces({ userId } = {}) {
     if (!userId) fail('INVALID_USER', 'userId es obligatorio')
     return [...this.#spaces.values()]
-      .filter((s) => !s.personal && (s.ownerId === userId || s.members.includes(userId)))
+      .filter((s) => !s.personal && this.#memberRole(s, userId))
       .map((s) => this.#view(s))
   }
 
   updateSpace(spaceId, patch = {}, { userId } = {}) {
     const s = this.#require(spaceId)
-    this.#assertAccess(s, userId)
+    const touchesMembers = patch.members !== undefined
+    this.#assertAccess(s, userId, touchesMembers ? 'manage' : 'edit')
     if (patch.name !== undefined) {
       if (!patch.name) fail('INVALID_NAME', 'name no puede quedar vacío')
       s.name = patch.name
@@ -107,7 +129,44 @@ export class SpacesService {
     if (patch.inheritContext !== undefined) s.inheritContext = patch.inheritContext !== false
     if (patch.context !== undefined) s.context = normalizeContext(patch.context)
     if (patch.excluded !== undefined) s.excluded = Array.isArray(patch.excluded) ? [...patch.excluded] : []
-    if (patch.members !== undefined) s.members = uniq([s.ownerId, ...(Array.isArray(patch.members) ? patch.members : [])])
+    if (touchesMembers) s.members = normalizeMembers(s.ownerId, patch.members)
+    s.version += 1
+    this.#persist()
+    return this.#view(s)
+  }
+
+  addMember({ spaceId, memberId, role = 'editor', userId } = {}) {
+    const s = this.#require(spaceId)
+    this.#assertAccess(s, userId, 'manage')
+    if (!memberId) fail('INVALID_MEMBER', 'memberId es obligatorio')
+    if (memberId === s.ownerId) fail('INVALID_MEMBER', 'el propietario ya pertenece al espacio')
+    if (!ROLES.includes(role) || role === 'owner') fail('INVALID_ROLE', `rol inválido: ${role}`)
+    const existing = s.members.find((m) => m.userId === memberId)
+    if (existing) existing.role = role
+    else s.members.push({ userId: memberId, role })
+    s.version += 1
+    this.#persist()
+    return this.#view(s)
+  }
+
+  removeMember({ spaceId, memberId, userId } = {}) {
+    const s = this.#require(spaceId)
+    this.#assertAccess(s, userId, 'manage')
+    if (memberId === s.ownerId) fail('INVALID_MEMBER', 'no se puede quitar al propietario')
+    s.members = s.members.filter((m) => m.userId !== memberId)
+    s.version += 1
+    this.#persist()
+    return this.#view(s)
+  }
+
+  setMemberRole({ spaceId, memberId, role, userId } = {}) {
+    const s = this.#require(spaceId)
+    this.#assertAccess(s, userId, 'manage')
+    if (memberId === s.ownerId) fail('INVALID_MEMBER', 'no se puede cambiar el rol del propietario')
+    if (!ROLES.includes(role) || role === 'owner') fail('INVALID_ROLE', `rol inválido: ${role}`)
+    const member = s.members.find((m) => m.userId === memberId)
+    if (!member) fail('MEMBER_NOT_FOUND', `${memberId} no es miembro de ${spaceId}`)
+    member.role = role
     s.version += 1
     this.#persist()
     return this.#view(s)
@@ -115,7 +174,7 @@ export class SpacesService {
 
   effectiveContext(spaceId, { userId } = {}) {
     const s = this.#require(spaceId)
-    this.#assertAccess(s, userId)
+    this.#assertAccess(s, userId, 'view')
     const { items, versions } = this.#collect(s.id, new Set())
     const { kept, removed } = this.#applyExclusions(items, s.excluded)
     const { resolved, conflicts } = this.#merge(kept)
@@ -126,16 +185,16 @@ export class SpacesService {
     if (!userId) fail('INVALID_USER', 'userId es obligatorio')
     if (!spaceId) return this.#view(this.#ensurePersonal(userId))
     const s = this.#require(spaceId)
-    this.#assertAccess(s, userId)
+    this.#assertAccess(s, userId, 'view')
     return this.#view(s)
   }
 
   previewLink({ userId, targetSpaceId, material = [] } = {}) {
     if (!userId) fail('INVALID_USER', 'userId es obligatorio')
     const target = this.#require(targetSpaceId)
-    this.#assertAccess(target, userId)
+    this.#assertAccess(target, userId, 'view')
     const audienceBefore = [userId]
-    const audienceAfter = uniq(target.members)
+    const audienceAfter = uniq(target.members.map((m) => m.userId))
     const newlyVisibleTo = audienceAfter.filter((u) => !audienceBefore.includes(u))
     const summary = { messages: 0, attachments: 0, other: 0, sensitive: 0 }
     for (const m of Array.isArray(material) ? material : []) {
@@ -161,7 +220,7 @@ export class SpacesService {
 
   resolveWorkdir(spaceId, { userId } = {}) {
     const s = this.#require(spaceId)
-    this.#assertAccess(s, userId)
+    this.#assertAccess(s, userId, 'view')
     // El path real del harness nunca se expone: solo una referencia opaca.
     const ref = 'fw_' + createHash('sha256').update(s.id).digest('hex').slice(0, 24)
     return { spaceId: s.id, ref }
@@ -175,6 +234,9 @@ export class SpacesService {
         case 'spaces.get': return ok(this.getSpace(params.spaceId, params))
         case 'spaces.list': return ok(this.listSpaces(params))
         case 'spaces.update': return ok(this.updateSpace(params.spaceId, params.patch || {}, params))
+        case 'spaces.addMember': return ok(this.addMember(params))
+        case 'spaces.removeMember': return ok(this.removeMember(params))
+        case 'spaces.setMemberRole': return ok(this.setMemberRole(params))
         case 'spaces.effectiveContext': return ok(this.effectiveContext(params.spaceId, params))
         case 'spaces.personal': return ok(this.resolveScope(params))
         case 'spaces.previewLink': return ok(this.previewLink(params))
@@ -194,14 +256,23 @@ export class SpacesService {
     return s
   }
 
-  #assertAccess(space, userId) {
+  #memberRole(space, userId) {
+    if (!userId) return undefined
+    if (space.ownerId === userId) return 'owner'
+    const m = (space.members || []).find((x) => x.userId === userId)
+    return m ? m.role : undefined
+  }
+
+  #assertAccess(space, userId, permission = 'view') {
     if (!userId) fail('INVALID_USER', 'userId es obligatorio')
     if (space.personal) {
       if (space.ownerId !== userId) fail('ACCESS_DENIED', 'ámbito personal de otro usuario')
       return
     }
-    if (space.ownerId !== userId && !space.members.includes(userId)) {
-      fail('ACCESS_DENIED', `sin acceso al espacio ${space.id}`)
+    const role = this.#memberRole(space, userId)
+    if (!role) fail('ACCESS_DENIED', `sin acceso al espacio ${space.id}`)
+    if (!PERMISSIONS[permission].includes(role)) {
+      fail('FORBIDDEN', `el rol ${role} no permite ${permission} en ${space.id}`)
     }
   }
 
@@ -216,7 +287,7 @@ export class SpacesService {
       parentId: null,
       inheritContext: false,
       personal: true,
-      members: [userId],
+      members: [{ userId, role: 'owner' }],
       context: [],
       excluded: [],
       version: 1,
@@ -283,7 +354,7 @@ export class SpacesService {
       parentId: s.parentId,
       inheritContext: s.inheritContext,
       personal: s.personal,
-      members: [...s.members],
+      members: (s.members || []).map((m) => ({ ...m })),
       version: s.version,
       createdAt: s.createdAt,
     }

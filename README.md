@@ -15,7 +15,10 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
 - **Vista previa de audiencia** al vincular una conversación a un espacio
   compartido.
 - **Persistencia** con repositorio intercambiable (memoria o archivo JSON atómico).
-- **Servidor MCP** (stdio) que expone las operaciones como herramientas.
+- **ACL por espacio**: roles `owner`/`admin`/`editor`/`viewer` con permisos
+  `view`/`edit`/`manage`.
+- **Servidor MCP** en **stdio** y **HTTP** (identidad por cabecera y gateway key
+  opcional) que expone las operaciones como herramientas.
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).
@@ -35,6 +38,13 @@ Servidor MCP por stdio:
 
 ```bash
 FABERLOOM_DATA_FILE=./data/spaces.json FABERLOOM_USER_ID=u1 npm run mcp
+```
+
+Servidor MCP por HTTP (identidad por cabecera `X-Faberloom-User-Id`; si defines
+`FABERLOOM_GATEWAY_KEY`, se exige `X-Faberloom-Gateway-Key`):
+
+```bash
+FABERLOOM_DATA_FILE=./data/spaces.json FABERLOOM_PORT=8090 FABERLOOM_GATEWAY_KEY=... npm run mcp:http
 ```
 
 ### Pruebas

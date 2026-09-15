@@ -14,6 +14,11 @@ const CH = {
   source: { type: 'string', description: 'Origen del dato (procedencia)' },
 }
 
+const memberItem = {
+  type: ['string', 'object'],
+  description: "'userId' (rol editor) o { userId, role } con role: admin|editor|viewer",
+}
+
 const TOOLS = [
   {
     name: 'spaces_create',
@@ -25,7 +30,7 @@ const TOOLS = [
         ownerId: { type: 'string', description: 'Por defecto, el usuario conectado' },
         parentId: { type: 'string' },
         inheritContext: { type: 'boolean' },
-        members: { type: 'array', items: { type: 'string' } },
+        members: { type: 'array', items: memberItem },
         context: { type: 'array', items: { type: 'object', properties: CH, required: ['key'] } },
         excluded: { type: 'array', items: { type: 'string' } },
         theme: { type: 'string' },
@@ -45,11 +50,38 @@ const TOOLS = [
         name: { type: 'string' },
         theme: { type: 'string' },
         inheritContext: { type: 'boolean' },
-        members: { type: 'array', items: { type: 'string' } },
+        members: { type: 'array', items: memberItem },
         context: { type: 'array', items: { type: 'object', properties: CH, required: ['key'] } },
         excluded: { type: 'array', items: { type: 'string' } },
       },
       required: ['spaceId'],
+    },
+  },
+  {
+    name: 'spaces_add_member',
+    description: 'Añade o actualiza un miembro del espacio.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        spaceId: { type: 'string' },
+        memberId: { type: 'string' },
+        role: { type: 'string', enum: ['admin', 'editor', 'viewer'] },
+      },
+      required: ['spaceId', 'memberId'],
+    },
+  },
+  {
+    name: 'spaces_remove_member',
+    description: 'Quita a un miembro del espacio (no al propietario).',
+    inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, memberId: { type: 'string' } }, required: ['spaceId', 'memberId'] },
+  },
+  {
+    name: 'spaces_set_member_role',
+    description: 'Cambia el rol de un miembro.',
+    inputSchema: {
+      type: 'object',
+      properties: { spaceId: { type: 'string' }, memberId: { type: 'string' }, role: { type: 'string', enum: ['admin', 'editor', 'viewer'] } },
+      required: ['spaceId', 'memberId', 'role'],
     },
   },
   { name: 'spaces_effective_context', description: 'Resuelve el contexto efectivo.', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' } }, required: ['spaceId'] } },
@@ -78,9 +110,15 @@ function mapTool(name, args, userId) {
     case 'spaces_list':
       return ['spaces.list', { userId }]
     case 'spaces_update': {
-      const { spaceId, ...patch } = args
+      const { spaceId, userId: _ignored, ...patch } = args
       return ['spaces.update', { spaceId, userId, patch }]
     }
+    case 'spaces_add_member':
+      return ['spaces.addMember', { spaceId: args.spaceId, memberId: args.memberId, role: args.role || 'editor', userId }]
+    case 'spaces_remove_member':
+      return ['spaces.removeMember', { spaceId: args.spaceId, memberId: args.memberId, userId }]
+    case 'spaces_set_member_role':
+      return ['spaces.setMemberRole', { spaceId: args.spaceId, memberId: args.memberId, role: args.role, userId }]
     case 'spaces_effective_context':
       return ['spaces.effectiveContext', { spaceId: args.spaceId, userId }]
     case 'spaces_personal':
