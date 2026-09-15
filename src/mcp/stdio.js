@@ -3,13 +3,14 @@ import { fileURLToPath } from 'node:url'
 
 import { SpacesService } from '../spaces/index.js'
 import { repositoryFromEnv } from '../store/from-env.js'
+import { blobStoreFromEnv } from '../store/blob.js'
 import { createMcpServer } from './server.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const dataDir = path.join(__dirname, '..', '..', 'data')
 
 const repository = await repositoryFromEnv(process.env, dataDir)
-const service = new SpacesService({ repository })
+const service = new SpacesService({ repository, blobStore: blobStoreFromEnv(process.env) })
 const server = createMcpServer({
   service,
   defaultUserId: process.env.FABERLOOM_USER_ID || 'anon',

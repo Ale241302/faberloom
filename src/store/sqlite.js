@@ -50,10 +50,26 @@ export class SqliteRepository {
       CREATE TABLE IF NOT EXISTS space_links (
         id TEXT PRIMARY KEY, space_id TEXT NOT NULL, kind TEXT NOT NULL,
         ref TEXT NOT NULL, title TEXT, sensitive INTEGER NOT NULL DEFAULT 0,
-        added_by TEXT NOT NULL, created_at TEXT NOT NULL
+        added_by TEXT NOT NULL, created_at TEXT NOT NULL,
+        stored INTEGER NOT NULL DEFAULT 0, size INTEGER, sha256 TEXT,
+        media_type TEXT, file_name TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_space_links_space ON space_links (space_id);
     `)
+    this.#ensureColumns('space_links', {
+      stored: 'INTEGER NOT NULL DEFAULT 0',
+      size: 'INTEGER',
+      sha256: 'TEXT',
+      media_type: 'TEXT',
+      file_name: 'TEXT',
+    })
+  }
+
+  #ensureColumns(table, cols) {
+    const existing = new Set(this.#db.prepare(`PRAGMA table_info(${table})`).all().map((c) => c.name))
+    for (const [name, type] of Object.entries(cols)) {
+      if (!existing.has(name)) this.#db.exec(`ALTER TABLE ${table} ADD COLUMN ${name} ${type}`)
+    }
   }
 
   read() {
@@ -89,6 +105,8 @@ export class SqliteRepository {
       sensitive: !!r.sensitive,
       addedBy: r.added_by,
       createdAt: r.created_at,
+      stored: !!r.stored,
+      ...(r.stored ? { size: r.size, sha256: r.sha256, mediaType: r.media_type, fileName: r.file_name } : {}),
     }))
 
     if (!spaces.length && !links.length) return null
@@ -109,13 +127,28 @@ export class SqliteRepository {
   saveLink(link) {
     this.#db
       .prepare(
-        `INSERT INTO space_links (id, space_id, kind, ref, title, sensitive, added_by, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `INSERT INTO space_links (id, space_id, kind, ref, title, sensitive, added_by, created_at, stored, size, sha256, media_type, file_name)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(id) DO UPDATE SET space_id=excluded.space_id, kind=excluded.kind,
            ref=excluded.ref, title=excluded.title, sensitive=excluded.sensitive,
-           added_by=excluded.added_by, created_at=excluded.created_at`,
+           added_by=excluded.added_by, created_at=excluded.created_at, stored=excluded.stored,
+           size=excluded.size, sha256=excluded.sha256, media_type=excluded.media_type, file_name=excluded.file_name`,
       )
-      .run(link.id, link.spaceId, link.kind, link.ref, link.title ?? null, link.sensitive ? 1 : 0, link.addedBy, link.createdAt)
+      .run(
+        link.id,
+        link.spaceId,
+        link.kind,
+        link.ref,
+        link.title ?? null,
+        link.sensitive ? 1 : 0,
+        link.addedBy,
+        link.createdAt,
+        link.stored ? 1 : 0,
+        link.size ?? null,
+        link.sha256 ?? null,
+        link.mediaType ?? null,
+        link.fileName ?? null,
+      )
   }
 
   deleteLink(id) {

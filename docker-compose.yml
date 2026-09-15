@@ -1,0 +1,36 @@
+name: faberloom
+
+services:
+  mcp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: faberloom/mcp:latest
+    container_name: faberloom-mcp
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      FABERLOOM_STORE: sqlite
+      FABERLOOM_DB: /data/spaces.sqlite
+      FABERLOOM_BLOB_DIR: /data/blobs
+      FABERLOOM_PORT: "8090"
+    volumes:
+      - faberloom_data:/data
+    networks:
+      - harness-net
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8090/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  harness-net:
+    name: harness-net
+    external: true
+
+volumes:
+  faberloom_data:
+    name: faberloom-data

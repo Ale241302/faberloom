@@ -68,6 +68,20 @@ node --test
 - Pendiente: integración con la UI del harness y vínculo real de conversaciones y
   archivos a espacios.
 
+## Despliegue (contenedor)
+
+- `Dockerfile` y `docker-compose.yml`: imagen `faberloom/mcp`, red externa
+  `harness-net` y volumen `faberloom-data` (SQLite + blobs).
+- Variables clave: `FABERLOOM_GATEWAY_KEY` (secreto compartido con el gateway del
+  harness), `FABERLOOM_STORE=sqlite`, `FABERLOOM_BLOB_DIR=/data/blobs`.
+- El gateway del harness inyecta este MCP en cada sesión de usuario con
+  `X-Faberloom-User-Id` y `X-MWT-Client-ID`.
+
+```bash
+cp .env.example .env   # rellena FABERLOOM_GATEWAY_KEY
+docker compose up -d --build
+```
+
 ## Mockup v2 (prototipo visual previo · abril 2026)
 
 Mockup modular de la interfaz (HTML/CSS/JS, sin dependencias): `index.html`,

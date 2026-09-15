@@ -62,11 +62,13 @@ export class SpacesService {
   #idGen
   #now
   #repo
+  #blob
 
-  constructor({ idGen, now, repository } = {}) {
+  constructor({ idGen, now, repository, blobStore } = {}) {
     this.#idGen = idGen ?? (() => randomUUID())
     this.#now = now ?? (() => new Date().toISOString())
     this.#repo = repository ?? null
+    this.#blob = blobStore ?? null
     if (this.#repo && typeof this.#repo.read === 'function') {
       const state = this.#repo.read()
       if (state && Array.isArray(state.spaces)) {
@@ -185,12 +187,35 @@ export class SpacesService {
     return this.#view(s)
   }
 
-  linkConversation({ spaceId, conversationId, title = null, sensitive = false, userId, companyId } = {}) {
-    return this.#link({ spaceId, kind: 'conversation', ref: conversationId, title, sensitive, userId, companyId })
+  linkConversation({ spaceId, conversationId, content, title = null, sensitive = false, userId, companyId } = {}) {
+    return this.#link({ spaceId, kind: 'conversation', ref: conversationId, content, title, sensitive, userId, companyId })
   }
 
-  linkFile({ spaceId, fileRef, title = null, sensitive = false, userId, companyId } = {}) {
-    return this.#link({ spaceId, kind: 'file', ref: fileRef, title, sensitive, userId, companyId })
+  linkFile({ spaceId, fileRef, content, fileName = null, mediaType = null, title = null, sensitive = false, userId, companyId } = {}) {
+    return this.#link({ spaceId, kind: 'file', ref: fileRef, content, fileName, mediaType, title, sensitive, userId, companyId })
+  }
+
+  readLinkContent({ spaceId, linkId, userId, companyId } = {}) {
+    const s = this.#require(spaceId)
+    this.#assertAccess(s, userId, 'view', companyId)
+    const link = this.#links.get(linkId)
+    if (!link || link.spaceId !== spaceId) fail('LINK_NOT_FOUND', `vínculo ${linkId} no existe en ${spaceId}`)
+    if (!link.stored) fail('NO_CONTENT', 'el vínculo apunta a una referencia externa, no a contenido guardado')
+    if (!this.#blob) fail('NO_BLOB_STORE', 'no hay almacenamiento de contenido configurado')
+    const obj = this.#blob.get(link.ref)
+    if (!obj) fail('CONTENT_NOT_FOUND', `no se encontró el contenido ${link.ref}`)
+    const base = { linkId: link.id, kind: link.kind, ref: link.ref, mediaType: link.mediaType ?? obj.mediaType ?? null, size: obj.size, sha256: obj.sha256 }
+    if (link.kind === 'conversation') {
+      const text = obj.buf.toString('utf8')
+      let json = null
+      try {
+        json = JSON.parse(text)
+      } catch {
+        /* no era JSON */
+      }
+      return { ...base, text, json }
+    }
+    return { ...base, base64: obj.buf.toString('base64') }
   }
 
   unlink({ spaceId, linkId, userId, companyId } = {}) {
@@ -199,6 +224,7 @@ export class SpacesService {
     const link = this.#links.get(linkId)
     if (!link || link.spaceId !== spaceId) fail('LINK_NOT_FOUND', `vínculo ${linkId} no existe en ${spaceId}`)
     this.#links.delete(linkId)
+    if (link.stored && this.#blob) this.#blob.delete(link.ref)
     this.#persistLink(link, true)
     return this.#linkView(link)
   }
@@ -280,6 +306,7 @@ export class SpacesService {
         case 'spaces.linkFile': return ok(this.linkFile(params))
         case 'spaces.unlink': return ok(this.unlink(params))
         case 'spaces.listLinks': return ok(this.listLinks(params))
+        case 'spaces.readLinkContent': return ok(this.readLinkContent(params))
         case 'spaces.effectiveContext': return ok(this.effectiveContext(params.spaceId, params))
         case 'spaces.personal': return ok(this.resolveScope(params))
         case 'spaces.previewLink': return ok(this.previewLink(params))
@@ -354,19 +381,40 @@ export class SpacesService {
     }
   }
 
-  #link({ spaceId, kind, ref, title, sensitive, userId, companyId }) {
+  #link({ spaceId, kind, ref, content, fileName, mediaType, title, sensitive, userId, companyId }) {
     const s = this.#require(spaceId)
     this.#assertAccess(s, userId, 'edit', companyId)
-    if (!ref || typeof ref !== 'string') fail('INVALID_REF', `${kind} requiere una referencia`)
+
+    let stored = false
+    let size
+    let sha256
+    let finalRef = ref
+    let mt = mediaType ?? null
+
+    if (content !== undefined) {
+      if (!this.#blob) fail('NO_BLOB_STORE', 'no hay almacenamiento de contenido configurado')
+      const buf = Buffer.isBuffer(content) ? content : Buffer.from(typeof content === 'string' ? content : JSON.stringify(content))
+      mt = mt ?? (kind === 'conversation' ? 'application/json' : 'application/octet-stream')
+      const put = this.#blob.put(buf, { mediaType: mt })
+      stored = true
+      finalRef = put.ref
+      size = put.size
+      sha256 = put.sha256
+    } else if (!finalRef || typeof finalRef !== 'string') {
+      fail('INVALID_REF', `${kind} requiere una referencia o contenido`)
+    }
+
     const link = {
       id: this._id('lnk'),
       spaceId,
       kind,
-      ref,
+      ref: finalRef,
       title: title || null,
       sensitive: !!sensitive,
       addedBy: userId,
       createdAt: this.#now(),
+      stored,
+      ...(stored ? { size, sha256, mediaType: mt, fileName: fileName ?? null } : {}),
     }
     this.#links.set(link.id, link)
     this.#persistLink(link, false)

@@ -93,7 +93,7 @@ const TOOLS = [
     description: 'Vincula una conversación a un espacio.',
     inputSchema: {
       type: 'object',
-      properties: { spaceId: { type: 'string' }, conversationId: { type: 'string' }, title: { type: 'string' }, sensitive: { type: 'boolean' } },
+      properties: { spaceId: { type: 'string' }, conversationId: { type: 'string' }, title: { type: 'string' }, sensitive: { type: 'boolean' }, content: { description: 'Texto o JSON de la conversación; si se envía, se guarda' } },
       required: ['spaceId', 'conversationId'],
     },
   },
@@ -102,12 +102,13 @@ const TOOLS = [
     description: 'Vincula un archivo a un espacio.',
     inputSchema: {
       type: 'object',
-      properties: { spaceId: { type: 'string' }, fileRef: { type: 'string' }, title: { type: 'string' }, sensitive: { type: 'boolean' } },
-      required: ['spaceId', 'fileRef'],
+      properties: { spaceId: { type: 'string' }, fileRef: { type: 'string' }, title: { type: 'string' }, sensitive: { type: 'boolean' }, content: { type: 'string', description: 'Contenido en base64; si se envía, se guarda' }, fileName: { type: 'string' }, mediaType: { type: 'string' } },
+      required: ['spaceId'],
     },
   },
   { name: 'spaces_list_links', description: 'Lista los vínculos de un espacio.', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' } }, required: ['spaceId'] } },
   { name: 'spaces_unlink', description: 'Quita un vínculo de un espacio.', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, linkId: { type: 'string' } }, required: ['spaceId', 'linkId'] } },
+  { name: 'spaces_read_link_content', description: 'Lee el contenido guardado de un vínculo (texto o base64).', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, linkId: { type: 'string' } }, required: ['spaceId', 'linkId'] } },
   { name: 'spaces_effective_context', description: 'Resuelve el contexto efectivo.', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' } }, required: ['spaceId'] } },
   { name: 'spaces_personal', description: 'Ámbito personal del usuario (o el espacio indicado).', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' } } } },
   {
@@ -148,13 +149,18 @@ function mapTool(name, args, ctx) {
     case 'spaces_set_member_role':
       return ['spaces.setMemberRole', { ...common, spaceId: args.spaceId, memberId: args.memberId, role: args.role }]
     case 'spaces_link_conversation':
-      return ['spaces.linkConversation', { ...common, spaceId: args.spaceId, conversationId: args.conversationId, title: args.title, sensitive: args.sensitive }]
-    case 'spaces_link_file':
-      return ['spaces.linkFile', { ...common, spaceId: args.spaceId, fileRef: args.fileRef, title: args.title, sensitive: args.sensitive }]
+      return ['spaces.linkConversation', { ...common, spaceId: args.spaceId, conversationId: args.conversationId, content: args.content, title: args.title, sensitive: args.sensitive }]
+    case 'spaces_link_file': {
+      // El contenido de archivo viaja en base64; el servicio guarda bytes.
+      const content = typeof args.content === 'string' ? Buffer.from(args.content, 'base64') : args.content
+      return ['spaces.linkFile', { ...common, spaceId: args.spaceId, fileRef: args.fileRef, content, fileName: args.fileName, mediaType: args.mediaType, title: args.title, sensitive: args.sensitive }]
+    }
     case 'spaces_unlink':
       return ['spaces.unlink', { ...common, spaceId: args.spaceId, linkId: args.linkId }]
     case 'spaces_list_links':
       return ['spaces.listLinks', { ...common, spaceId: args.spaceId }]
+    case 'spaces_read_link_content':
+      return ['spaces.readLinkContent', { ...common, spaceId: args.spaceId, linkId: args.linkId }]
     case 'spaces_effective_context':
       return ['spaces.effectiveContext', { ...common, spaceId: args.spaceId }]
     case 'spaces_personal':
