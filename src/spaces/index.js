@@ -58,6 +58,7 @@ function normalizeMembers(ownerId, members) {
 export class SpacesService {
   #spaces = new Map()
   #personalByUser = new Map() // userId -> spaceId
+  #links = new Map() // linkId -> link
   #idGen
   #now
   #repo
@@ -71,6 +72,7 @@ export class SpacesService {
       if (state && Array.isArray(state.spaces)) {
         for (const s of state.spaces) this.#spaces.set(s.id, s)
         for (const [uid, sid] of Object.entries(state.personalIndex || {})) this.#personalByUser.set(uid, sid)
+        for (const link of state.links || []) this.#links.set(link.id, link)
       }
     }
   }
@@ -109,7 +111,7 @@ export class SpacesService {
       createdAt: this.#now(),
     }
     this.#spaces.set(space.id, space)
-    this.#persist()
+    this.#persist(space)
     return this.#view(space)
   }
 
@@ -142,7 +144,7 @@ export class SpacesService {
     if (patch.members !== undefined) s.members = normalizeMembers(s.ownerId, patch.members)
     if (patch.companyId !== undefined) s.companyId = patch.companyId ?? null
     s.version += 1
-    this.#persist()
+    this.#persist(s)
     return this.#view(s)
   }
 
@@ -156,7 +158,7 @@ export class SpacesService {
     if (existing) existing.role = role
     else s.members.push({ userId: memberId, role })
     s.version += 1
-    this.#persist()
+    this.#persist(s)
     return this.#view(s)
   }
 
@@ -166,7 +168,7 @@ export class SpacesService {
     if (memberId === s.ownerId) fail('INVALID_MEMBER', 'no se puede quitar al propietario')
     s.members = s.members.filter((m) => m.userId !== memberId)
     s.version += 1
-    this.#persist()
+    this.#persist(s)
     return this.#view(s)
   }
 
@@ -179,8 +181,35 @@ export class SpacesService {
     if (!member) fail('MEMBER_NOT_FOUND', `${memberId} no es miembro de ${spaceId}`)
     member.role = role
     s.version += 1
-    this.#persist()
+    this.#persist(s)
     return this.#view(s)
+  }
+
+  linkConversation({ spaceId, conversationId, title = null, sensitive = false, userId, companyId } = {}) {
+    return this.#link({ spaceId, kind: 'conversation', ref: conversationId, title, sensitive, userId, companyId })
+  }
+
+  linkFile({ spaceId, fileRef, title = null, sensitive = false, userId, companyId } = {}) {
+    return this.#link({ spaceId, kind: 'file', ref: fileRef, title, sensitive, userId, companyId })
+  }
+
+  unlink({ spaceId, linkId, userId, companyId } = {}) {
+    const s = this.#require(spaceId)
+    this.#assertAccess(s, userId, 'edit', companyId)
+    const link = this.#links.get(linkId)
+    if (!link || link.spaceId !== spaceId) fail('LINK_NOT_FOUND', `vínculo ${linkId} no existe en ${spaceId}`)
+    this.#links.delete(linkId)
+    this.#persistLink(link, true)
+    return this.#linkView(link)
+  }
+
+  listLinks({ spaceId, userId, companyId } = {}) {
+    const s = this.#require(spaceId)
+    this.#assertAccess(s, userId, 'view', companyId)
+    return [...this.#links.values()]
+      .filter((l) => l.spaceId === spaceId)
+      .sort((a, b) => (a.createdAt < b.createdAt ? -1 : 1))
+      .map((l) => this.#linkView(l))
   }
 
   effectiveContext(spaceId, { userId, companyId } = {}) {
@@ -247,6 +276,10 @@ export class SpacesService {
         case 'spaces.addMember': return ok(this.addMember(params))
         case 'spaces.removeMember': return ok(this.removeMember(params))
         case 'spaces.setMemberRole': return ok(this.setMemberRole(params))
+        case 'spaces.linkConversation': return ok(this.linkConversation(params))
+        case 'spaces.linkFile': return ok(this.linkFile(params))
+        case 'spaces.unlink': return ok(this.unlink(params))
+        case 'spaces.listLinks': return ok(this.listLinks(params))
         case 'spaces.effectiveContext': return ok(this.effectiveContext(params.spaceId, params))
         case 'spaces.personal': return ok(this.resolveScope(params))
         case 'spaces.previewLink': return ok(this.previewLink(params))
@@ -321,6 +354,31 @@ export class SpacesService {
     }
   }
 
+  #link({ spaceId, kind, ref, title, sensitive, userId, companyId }) {
+    const s = this.#require(spaceId)
+    this.#assertAccess(s, userId, 'edit', companyId)
+    if (!ref || typeof ref !== 'string') fail('INVALID_REF', `${kind} requiere una referencia`)
+    const link = {
+      id: this._id('lnk'),
+      spaceId,
+      kind,
+      ref,
+      title: title || null,
+      sensitive: !!sensitive,
+      addedBy: userId,
+      createdAt: this.#now(),
+    }
+    this.#links.set(link.id, link)
+    this.#persistLink(link, false)
+    return this.#linkView(link)
+  }
+
+  #linkView(link) {
+    const s = this.#spaces.get(link.spaceId)
+    const members = s ? s.members.map((m) => m.userId) : []
+    return { ...link, sharedWith: members.filter((u) => u !== link.addedBy) }
+  }
+
   #ensurePersonal(userId) {
     const existingId = this.#personalByUser.get(userId)
     if (existingId) return this.#spaces.get(existingId)
@@ -342,17 +400,39 @@ export class SpacesService {
     }
     this.#spaces.set(s.id, s)
     this.#personalByUser.set(userId, s.id)
-    this.#persist()
+    this.#persist(s)
     return s
   }
 
-  #persist() {
-    if (!this.#repo || typeof this.#repo.write !== 'function') return
-    this.#repo.write({
+  #persist(space) {
+    if (!this.#repo) return
+    if (space && typeof this.#repo.saveSpace === 'function') {
+      this.#repo.saveSpace(space)
+      return
+    }
+    if (typeof this.#repo.write === 'function') this.#repo.write(this.#snapshot())
+  }
+
+  #persistLink(link, deleted) {
+    if (!this.#repo) return
+    if (deleted && typeof this.#repo.deleteLink === 'function') {
+      this.#repo.deleteLink(link.id)
+      return
+    }
+    if (!deleted && typeof this.#repo.saveLink === 'function') {
+      this.#repo.saveLink(link)
+      return
+    }
+    if (typeof this.#repo.write === 'function') this.#repo.write(this.#snapshot())
+  }
+
+  #snapshot() {
+    return {
       version: 1,
       spaces: [...this.#spaces.values()],
       personalIndex: Object.fromEntries(this.#personalByUser),
-    })
+      links: [...this.#links.values()],
+    }
   }
 
   #collect(spaceId, seen) {

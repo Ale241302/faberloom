@@ -43,6 +43,10 @@ Todas se invocan con `run(operation, params)` y devuelven `{ ok: true, data }` o
 | `spaces.personal` | `userId, spaceId?` | Ámbito personal o el espacio indicado |
 | `spaces.previewLink` | `userId, targetSpaceId, material[]` | `{ audienceBefore, audienceAfter, newlyVisibleTo, material, warning }` |
 | `spaces.resolveWorkdir` | `spaceId, userId` | `{ spaceId, ref }` (referencia opaca) |
+| `spaces.linkConversation` | `spaceId, conversationId, title?, sensitive?, userId` | Vínculo creado (con `sharedWith`) |
+| `spaces.linkFile` | `spaceId, fileRef, title?, sensitive?, userId` | Vínculo creado |
+| `spaces.listLinks` | `spaceId, userId` | Vínculos del espacio |
+| `spaces.unlink` | `spaceId, linkId, userId` | Vínculo quitado |
 
 Códigos de error: `INVALID_NAME`, `INVALID_OWNER`, `INVALID_USER`,
 `INVALID_CONTEXT_ITEM`, `PARENT_NOT_FOUND`, `SPACE_NOT_FOUND`, `ACCESS_DENIED`,
@@ -126,8 +130,14 @@ memoria. Implementaciones incluidas:
 
 Se elige con `FABERLOOM_STORE` = `json` (por defecto), `sqlite` o `memory`; la ruta
 con `FABERLOOM_DATA_FILE` (JSON) o `FABERLOOM_DB` (SQLite). El servicio hidrata al
-construirse y persiste el estado completo en una transacción tras cada mutación.
-`node:sqlite` es experimental en Node 22 (emite un aviso), pero no requiere flag.
+construirse y persiste tras cada mutación.
+
+**Escritura incremental:** si el repositorio ofrece `saveSpace(space)`,
+`saveLink(link)` y `deleteLink(id)`, el servicio escribe **solo el objeto
+cambiado** (el `SqliteRepository` lo hace con `upsert` + reemplazo de sus filas
+hijas). Si no, cae al snapshot completo (`write(state)`), como hacen los
+repositorios JSON y de memoria. `node:sqlite` es experimental en Node 22 (emite un
+aviso), pero no requiere flag.
 
 ## 8. Servidor MCP
 
@@ -156,12 +166,28 @@ Arranque: `FABERLOOM_DATA_FILE=/ruta/spaces.json node src/mcp/stdio.js`
 
 Arranque: `FABERLOOM_PORT=8090 FABERLOOM_GATEWAY_KEY=... npm run mcp:http`.
 
-## 9. Fuera de este corte (siguientes)
+## 9. Vínculos de conversaciones y archivos
 
-- Integración con la **UI** del harness (navegación por espacios) y con el login
-  del gateway (la identidad/empresa ya viaja por el MCP; falta el montaje en el
-  despliegue).
-- Vínculo real de **conversaciones y archivos** a espacios (más allá de la vista
-  previa).
-- Escritura incremental del repositorio SQLite (hoy reemplaza el estado en una
-  transacción por mutación).
+Una conversación o un archivo puede quedar vinculado a un espacio:
+
+- `spaces.linkConversation({ spaceId, conversationId, title?, sensitive? })`
+- `spaces.linkFile({ spaceId, fileRef, title?, sensitive? })`
+- `spaces.listLinks({ spaceId })` y `spaces.unlink({ spaceId, linkId })`
+
+Reglas:
+
+- Vincular o quitar exige permiso `edit`; listar exige `view`.
+- El vínculo guarda `addedBy`, `createdAt`, `sensitive` y una referencia
+  (`conversationId` o `fileRef`), más `sharedWith` (miembros que lo verán al
+  quedar en el espacio). Usar `spaces.previewLink` antes para ver el cambio de
+  audiencia.
+- Los vínculos se persisten con el espacio (tabla `space_links` en SQLite; dentro
+  del snapshot en JSON/memoria).
+
+## 10. Fuera de este corte (siguientes)
+
+- Integración con la **UI** del harness (navegación por espacios) y montaje en el
+  despliegue. La identidad y la empresa **ya las aporta el MCP** por cabecera
+  (`X-Faberloom-User-Id`, `X-MWT-Client-ID`), así que es un paso de despliegue.
+- Resolver `fileRef` (almacenamiento real) y enlazar el contenido de una
+  conversación, no solo su referencia.

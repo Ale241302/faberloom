@@ -21,6 +21,8 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
   empresa** (`X-MWT-Client-ID`).
 - **Servidor MCP** en **stdio** y **HTTP** (identidad/empresa por cabecera y
   gateway key opcional) que expone las operaciones como herramientas.
+- **Vínculos** de conversaciones y archivos a espacios (`linkConversation`,
+  `linkFile`, `listLinks`, `unlink`), con `sharedWith` y `previewLink`.
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).

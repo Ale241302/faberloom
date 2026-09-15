@@ -88,6 +88,26 @@ const TOOLS = [
       required: ['spaceId', 'memberId', 'role'],
     },
   },
+  {
+    name: 'spaces_link_conversation',
+    description: 'Vincula una conversación a un espacio.',
+    inputSchema: {
+      type: 'object',
+      properties: { spaceId: { type: 'string' }, conversationId: { type: 'string' }, title: { type: 'string' }, sensitive: { type: 'boolean' } },
+      required: ['spaceId', 'conversationId'],
+    },
+  },
+  {
+    name: 'spaces_link_file',
+    description: 'Vincula un archivo a un espacio.',
+    inputSchema: {
+      type: 'object',
+      properties: { spaceId: { type: 'string' }, fileRef: { type: 'string' }, title: { type: 'string' }, sensitive: { type: 'boolean' } },
+      required: ['spaceId', 'fileRef'],
+    },
+  },
+  { name: 'spaces_list_links', description: 'Lista los vínculos de un espacio.', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' } }, required: ['spaceId'] } },
+  { name: 'spaces_unlink', description: 'Quita un vínculo de un espacio.', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, linkId: { type: 'string' } }, required: ['spaceId', 'linkId'] } },
   { name: 'spaces_effective_context', description: 'Resuelve el contexto efectivo.', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' } }, required: ['spaceId'] } },
   { name: 'spaces_personal', description: 'Ámbito personal del usuario (o el espacio indicado).', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' } } } },
   {
@@ -127,6 +147,14 @@ function mapTool(name, args, ctx) {
       return ['spaces.removeMember', { ...common, spaceId: args.spaceId, memberId: args.memberId }]
     case 'spaces_set_member_role':
       return ['spaces.setMemberRole', { ...common, spaceId: args.spaceId, memberId: args.memberId, role: args.role }]
+    case 'spaces_link_conversation':
+      return ['spaces.linkConversation', { ...common, spaceId: args.spaceId, conversationId: args.conversationId, title: args.title, sensitive: args.sensitive }]
+    case 'spaces_link_file':
+      return ['spaces.linkFile', { ...common, spaceId: args.spaceId, fileRef: args.fileRef, title: args.title, sensitive: args.sensitive }]
+    case 'spaces_unlink':
+      return ['spaces.unlink', { ...common, spaceId: args.spaceId, linkId: args.linkId }]
+    case 'spaces_list_links':
+      return ['spaces.listLinks', { ...common, spaceId: args.spaceId }]
     case 'spaces_effective_context':
       return ['spaces.effectiveContext', { ...common, spaceId: args.spaceId }]
     case 'spaces_personal':
