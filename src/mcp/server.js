@@ -19,7 +19,7 @@ const memberItem = {
   description: "'userId' (rol editor) o { userId, role } con role: admin|editor|viewer",
 }
 
-const TOOLS = [
+const SPACES_TOOLS = [
   {
     name: 'spaces_create',
     description: 'Crea un espacio o subespacio.',
@@ -126,6 +126,93 @@ const TOOLS = [
   { name: 'spaces_resolve_workdir', description: 'Referencia opaca del directorio de trabajo.', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' } }, required: ['spaceId'] } },
 ]
 
+const AGENTS_TOOLS = [
+  {
+    name: 'models_register',
+    description: 'Registra un modelo en el pool (capacidades, límites y tarifas).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string' },
+        provider: { type: 'string' },
+        name: { type: 'string' },
+        capabilities: { type: 'object', properties: { vision: { type: 'boolean' }, tools: { type: 'boolean' }, structuredOutput: { type: 'boolean' }, longContext: { type: 'boolean' }, reasoning: { type: 'boolean' } } },
+        contextLimit: { type: 'number' },
+        outputLimit: { type: 'number' },
+        available: { type: 'boolean' },
+        pricing: { type: 'object', properties: { input: { type: 'number' }, output: { type: 'number' }, cacheInput: { type: 'number' }, currency: { type: 'string' } } },
+        priceSource: { type: 'string' },
+        priceDate: { type: 'string' },
+      },
+      required: ['provider', 'name'],
+    },
+  },
+  { name: 'models_list', description: 'Lista el pool de modelos.', inputSchema: { type: 'object', properties: { availableOnly: { type: 'boolean' } } } },
+  { name: 'models_get', description: 'Detalle de un modelo.', inputSchema: { type: 'object', properties: { modelId: { type: 'string' } }, required: ['modelId'] } },
+  { name: 'models_remove', description: 'Quita un modelo del pool.', inputSchema: { type: 'object', properties: { modelId: { type: 'string' } }, required: ['modelId'] } },
+  {
+    name: 'agents_create',
+    description: 'Crea un agente (route: scratch | pool | task).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string' },
+        responsibility: { type: 'string' },
+        spaceId: { type: 'string' },
+        kind: { type: 'string', enum: ['base', 'specialist', 'temporary'] },
+        route: { type: 'string', enum: ['scratch', 'pool', 'task'] },
+        originRef: { type: 'string' },
+        fromAgentId: { type: 'string' },
+        templateId: { type: 'string' },
+        requirements: { type: 'object', properties: { capabilities: { type: 'array', items: { type: 'string' } }, minContext: { type: 'number' } } },
+        skills: { type: 'array', items: { type: 'string' } },
+        tools: { type: 'array', items: { type: 'string' } },
+        modelPolicy: { type: 'object' },
+      },
+      required: ['name'],
+    },
+  },
+  { name: 'agents_get', description: 'Detalle de un agente.', inputSchema: { type: 'object', properties: { agentId: { type: 'string' } }, required: ['agentId'] } },
+  { name: 'agents_list', description: 'Lista agentes.', inputSchema: { type: 'object', properties: { spaceId: { type: 'string' }, ownerId: { type: 'string' }, kind: { type: 'string' } } } },
+  { name: 'agents_update', description: 'Edita un agente (nueva versión).', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, patch: { type: 'object' } }, required: ['agentId'] } },
+  { name: 'agents_duplicate', description: 'Duplica un agente copiando solo skills/enseñanzas autorizadas.', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, toSpaceId: { type: 'string' }, skills: { type: 'array', items: { type: 'string' } }, copyTeachings: { type: 'boolean' } }, required: ['agentId'] } },
+  { name: 'agents_deactivate', description: 'Desactiva un agente.', inputSchema: { type: 'object', properties: { agentId: { type: 'string' } }, required: ['agentId'] } },
+  { name: 'agents_set_model_policy', description: 'Fija la política de modelo (principal, exclusividad, alternativas, escalamiento, presupuesto).', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, policy: { type: 'object' } }, required: ['agentId', 'policy'] } },
+  { name: 'agents_get_effective_policy', description: 'Política efectiva del agente.', inputSchema: { type: 'object', properties: { agentId: { type: 'string' } }, required: ['agentId'] } },
+  { name: 'agents_recommend_model', description: 'Recomienda modelo por costo esperado entre compatibles (con incertidumbre si falta tarifa).', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, requirements: { type: 'object' }, task: { type: 'object' } } } },
+  { name: 'agents_resolve_model', description: 'Resuelve el modelo efectivo para una tarea (principal, fallback, escalamiento, presupuesto).', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, task: { type: 'object' } }, required: ['agentId'] } },
+  { name: 'agents_record_selection', description: 'Registra la selección de modelo aplicada a una ejecución.', inputSchema: { type: 'object', properties: { agentId: { type: 'string' }, taskId: { type: 'string' }, decision: { type: 'object' } }, required: ['agentId', 'decision'] } },
+  { name: 'agents_list_selections', description: 'Historial de selecciones de un agente.', inputSchema: { type: 'object', properties: { agentId: { type: 'string' } } } },
+]
+
+function mapAgents(name, args, ctx) {
+  const { userId } = ctx
+  switch (name) {
+    case 'models_register': return ['models.register', args]
+    case 'models_list': return ['models.list', args]
+    case 'models_get': return ['models.get', { modelId: args.modelId }]
+    case 'models_remove': return ['models.remove', { modelId: args.modelId }]
+    case 'templates_register': return ['templates.register', args]
+    case 'templates_list': return ['templates.list', {}]
+    case 'agents_create': {
+      const { userId: _u, companyId: _c, ownerId: _o, ...rest } = args
+      return ['agents.create', { ...rest, ownerId: userId }]
+    }
+    case 'agents_get': return ['agents.get', { agentId: args.agentId }]
+    case 'agents_list': return ['agents.list', { spaceId: args.spaceId, ownerId: args.ownerId, kind: args.kind }]
+    case 'agents_update': return ['agents.update', { agentId: args.agentId, patch: args.patch || args }]
+    case 'agents_duplicate': return ['agents.duplicate', args]
+    case 'agents_deactivate': return ['agents.deactivate', { agentId: args.agentId }]
+    case 'agents_set_model_policy': return ['agents.setModelPolicy', { agentId: args.agentId, policy: args.policy }]
+    case 'agents_get_effective_policy': return ['agents.getEffectivePolicy', { agentId: args.agentId }]
+    case 'agents_recommend_model': return ['agents.recommendModel', args]
+    case 'agents_resolve_model': return ['agents.resolveModel', { agentId: args.agentId, task: args.task || {} }]
+    case 'agents_record_selection': return ['agents.recordSelection', { agentId: args.agentId, taskId: args.taskId, decision: args.decision }]
+    case 'agents_list_selections': return ['agents.listSelections', { agentId: args.agentId }]
+    default: return null
+  }
+}
+
 function mapTool(name, args, ctx) {
   const { userId, companyId } = ctx
   const common = companyId ? { userId, companyId } : { userId }
@@ -176,8 +263,9 @@ function mapTool(name, args, ctx) {
 
 const rpcError = (id, code, message) => ({ jsonrpc: '2.0', id, error: { code, message } })
 
-export function createMcpServer({ service, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
-  if (!service) throw new Error('createMcpServer requiere un SpacesService')
+export function createMcpServer({ service, agentsService, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
+  if (!service && !agentsService) throw new Error('createMcpServer requiere al menos un servicio')
+  const tools = [...(service ? SPACES_TOOLS : []), ...(agentsService ? AGENTS_TOOLS : [])]
 
   function handleMessage(msg) {
     const { id, method, params } = msg || {}
@@ -195,15 +283,24 @@ export function createMcpServer({ service, defaultUserId = process.env.FABERLOOM
     }
     if (method === 'notifications/initialized' || method?.startsWith('notifications/')) return null
     if (method === 'ping') return { jsonrpc: '2.0', id, result: {} }
-    if (method === 'tools/list') return { jsonrpc: '2.0', id, result: { tools: TOOLS } }
+    if (method === 'tools/list') return { jsonrpc: '2.0', id, result: { tools } }
 
     if (method === 'tools/call') {
       const name = params?.name
       const args = params?.arguments || {}
-      const mapped = mapTool(name, args, { userId: args.userId || defaultUserId, companyId: args.companyId })
+      const ctx = { userId: args.userId || defaultUserId, companyId: args.companyId }
+      let svc = null
+      let mapped = null
+      if (service && name && name.startsWith('spaces_')) {
+        svc = service
+        mapped = mapTool(name, args, ctx)
+      } else if (agentsService && name && (name.startsWith('models_') || name.startsWith('templates_') || name.startsWith('agents_'))) {
+        svc = agentsService
+        mapped = mapAgents(name, args, ctx)
+      }
       if (!mapped) return rpcError(id, -32602, `herramienta desconocida: ${name}`)
       const [operation, opParams] = mapped
-      const out = service.run(operation, opParams)
+      const out = svc.run(operation, opParams)
       if (!out.ok) {
         return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `${out.error.code}: ${out.error.message}` }], isError: true } }
       }
@@ -235,5 +332,5 @@ export function createMcpServer({ service, defaultUserId = process.env.FABERLOOM
     })
   }
 
-  return { tools: TOOLS, handleMessage, serveStdio }
+  return { tools, handleMessage, serveStdio }
 }

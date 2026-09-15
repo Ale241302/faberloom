@@ -7,8 +7,8 @@ export class MemoryRepository {
   read() {
     return this.#state
   }
-  write(state) {
-    this.#state = state
+  write(partial) {
+    this.#state = { ...(this.#state || {}), ...partial }
   }
 }
 
@@ -31,10 +31,12 @@ export class JsonFileRepository {
       throw e
     }
   }
-  write(state) {
+  write(partial) {
+    const current = this.read() || {}
+    const next = { ...current, ...partial }
     fs.mkdirSync(path.dirname(this.#file), { recursive: true })
     const tmp = `${this.#file}.tmp`
-    fs.writeFileSync(tmp, JSON.stringify(state, null, 2), 'utf8')
+    fs.writeFileSync(tmp, JSON.stringify(next, null, 2), 'utf8')
     fs.renameSync(tmp, this.#file)
   }
   get file() {

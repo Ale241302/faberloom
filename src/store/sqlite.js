@@ -55,6 +55,25 @@ export class SqliteRepository {
         media_type TEXT, file_name TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_space_links_space ON space_links (space_id);
+      CREATE TABLE IF NOT EXISTS models (
+        id TEXT PRIMARY KEY, provider TEXT NOT NULL, name TEXT NOT NULL,
+        capabilities TEXT, context_limit INTEGER, output_limit INTEGER,
+        available INTEGER NOT NULL DEFAULT 1, pricing TEXT, price_source TEXT,
+        price_date TEXT, notes TEXT, updated_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS agents (
+        id TEXT PRIMARY KEY, name TEXT NOT NULL, responsibility TEXT,
+        owner_id TEXT, space_id TEXT, kind TEXT, origin TEXT, model_policy TEXT,
+        requirements TEXT, skills TEXT, tools TEXT, subagents TEXT,
+        active INTEGER NOT NULL DEFAULT 1, version INTEGER NOT NULL DEFAULT 1,
+        history TEXT, created_at TEXT, updated_at TEXT
+      );
+      CREATE TABLE IF NOT EXISTS agent_selections (
+        id TEXT PRIMARY KEY, agent_id TEXT, task_id TEXT, model_id TEXT,
+        kind TEXT, reason TEXT, policy_version INTEGER, estimated_cost REAL,
+        currency TEXT, created_at TEXT
+      );
+      CREATE INDEX IF NOT EXISTS idx_selections_agent ON agent_selections (agent_id);
     `)
     this.#ensureColumns('space_links', {
       stored: 'INTEGER NOT NULL DEFAULT 0',
@@ -109,10 +128,58 @@ export class SqliteRepository {
       ...(r.stored ? { size: r.size, sha256: r.sha256, mediaType: r.media_type, fileName: r.file_name } : {}),
     }))
 
-    if (!spaces.length && !links.length) return null
+    const models = this.#db.prepare('SELECT * FROM models ORDER BY name').all().map((r) => ({
+      id: r.id,
+      provider: r.provider,
+      name: r.name,
+      capabilities: r.capabilities ? JSON.parse(r.capabilities) : {},
+      contextLimit: r.context_limit,
+      outputLimit: r.output_limit,
+      available: !!r.available,
+      pricing: r.pricing ? JSON.parse(r.pricing) : null,
+      priceSource: r.price_source,
+      priceDate: r.price_date,
+      notes: r.notes,
+      updatedAt: r.updated_at,
+    }))
+
+    const agents = this.#db.prepare('SELECT * FROM agents ORDER BY name').all().map((r) => ({
+      id: r.id,
+      name: r.name,
+      responsibility: r.responsibility,
+      ownerId: r.owner_id,
+      spaceId: r.space_id,
+      kind: r.kind,
+      origin: r.origin ? JSON.parse(r.origin) : null,
+      modelPolicy: r.model_policy ? JSON.parse(r.model_policy) : null,
+      requirements: r.requirements ? JSON.parse(r.requirements) : {},
+      skills: r.skills ? JSON.parse(r.skills) : [],
+      tools: r.tools ? JSON.parse(r.tools) : [],
+      subagents: r.subagents ? JSON.parse(r.subagents) : [],
+      active: !!r.active,
+      version: r.version,
+      history: r.history ? JSON.parse(r.history) : [],
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+    }))
+
+    const selections = this.#db.prepare('SELECT * FROM agent_selections ORDER BY created_at, id').all().map((r) => ({
+      id: r.id,
+      agentId: r.agent_id,
+      taskId: r.task_id,
+      modelId: r.model_id,
+      kind: r.kind,
+      reason: r.reason,
+      policyVersion: r.policy_version,
+      estimatedCost: r.estimated_cost,
+      currency: r.currency,
+      createdAt: r.created_at,
+    }))
+
+    if (!spaces.length && !links.length && !models.length && !agents.length) return null
     const personalIndex = {}
     for (const s of spaces) if (s.personal) personalIndex[s.ownerId] = s.id
-    return { version: 1, spaces, personalIndex, links }
+    return { version: 1, spaces, personalIndex, links, models, agents, selections }
   }
 
   // ── Escritura incremental ──────────────────────────────────────────
@@ -203,15 +270,100 @@ export class SqliteRepository {
     this.#db.prepare('DELETE FROM space_links WHERE id = ?').run(id)
   }
 
-  // ── Snapshot completo ──────────────────────────────────────────────
+  saveModel(m) {
+    this.#db
+      .prepare(
+        `INSERT INTO models (id, provider, name, capabilities, context_limit, output_limit, available, pricing, price_source, price_date, notes, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET provider=excluded.provider, name=excluded.name, capabilities=excluded.capabilities,
+           context_limit=excluded.context_limit, output_limit=excluded.output_limit, available=excluded.available,
+           pricing=excluded.pricing, price_source=excluded.price_source, price_date=excluded.price_date,
+           notes=excluded.notes, updated_at=excluded.updated_at`,
+      )
+      .run(
+        m.id,
+        m.provider,
+        m.name,
+        JSON.stringify(m.capabilities || {}),
+        m.contextLimit ?? null,
+        m.outputLimit ?? null,
+        m.available ? 1 : 0,
+        m.pricing ? JSON.stringify(m.pricing) : null,
+        m.priceSource ?? null,
+        m.priceDate ?? null,
+        m.notes ?? null,
+        m.updatedAt ?? null,
+      )
+  }
+
+  saveAgent(a) {
+    this.#db
+      .prepare(
+        `INSERT INTO agents (id, name, responsibility, owner_id, space_id, kind, origin, model_policy, requirements, skills, tools, subagents, active, version, history, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, responsibility=excluded.responsibility, owner_id=excluded.owner_id,
+           space_id=excluded.space_id, kind=excluded.kind, origin=excluded.origin, model_policy=excluded.model_policy,
+           requirements=excluded.requirements, skills=excluded.skills, tools=excluded.tools, subagents=excluded.subagents,
+           active=excluded.active, version=excluded.version, history=excluded.history, created_at=excluded.created_at, updated_at=excluded.updated_at`,
+      )
+      .run(
+        a.id,
+        a.name,
+        a.responsibility ?? null,
+        a.ownerId ?? null,
+        a.spaceId ?? null,
+        a.kind ?? null,
+        a.origin ? JSON.stringify(a.origin) : null,
+        a.modelPolicy ? JSON.stringify(a.modelPolicy) : null,
+        JSON.stringify(a.requirements || {}),
+        JSON.stringify(a.skills || []),
+        JSON.stringify(a.tools || []),
+        JSON.stringify(a.subagents || []),
+        a.active === false ? 0 : 1,
+        a.version,
+        JSON.stringify(a.history || []),
+        a.createdAt ?? null,
+        a.updatedAt ?? null,
+      )
+  }
+
+  deleteAgent(id) {
+    this.#db.prepare('DELETE FROM agents WHERE id = ?').run(id)
+    this.#db.prepare('DELETE FROM agent_selections WHERE agent_id = ?').run(id)
+  }
+
+  saveSelection(s) {
+    this.#db
+      .prepare('INSERT OR REPLACE INTO agent_selections (id, agent_id, task_id, model_id, kind, reason, policy_version, estimated_cost, currency, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(s.id, s.agentId, s.taskId ?? null, s.modelId ?? null, s.kind ?? null, s.reason ?? null, s.policyVersion ?? null, s.estimatedCost ?? null, s.currency ?? null, s.createdAt)
+  }
+
+  // ── Snapshot completo (solo de las secciones presentes) ─────────────
   write(state) {
     this.#tx(() => {
-      this.#db.exec('DELETE FROM space_context; DELETE FROM space_excluded; DELETE FROM space_members; DELETE FROM space_links; DELETE FROM spaces;')
-      for (const s of state.spaces || []) {
-        this.#insSpace(s)
-        this.#insChildren(s)
+      if (state.spaces !== undefined) {
+        this.#db.exec('DELETE FROM space_context; DELETE FROM space_excluded; DELETE FROM space_members; DELETE FROM spaces;')
+        for (const s of state.spaces || []) {
+          this.#insSpace(s)
+          this.#insChildren(s)
+        }
       }
-      for (const link of state.links || []) this.saveLink(link)
+      if (state.links !== undefined) {
+        this.#db.exec('DELETE FROM space_links;')
+        for (const link of state.links || []) this.saveLink(link)
+      }
+      if (state.models !== undefined) {
+        this.#db.exec('DELETE FROM models;')
+        for (const m of state.models || []) this.saveModel(m)
+      }
+      if (state.agents !== undefined) {
+        this.#db.exec('DELETE FROM agents;')
+        for (const a of state.agents || []) this.saveAgent(a)
+      }
+      if (state.selections !== undefined) {
+        this.#db.exec('DELETE FROM agent_selections;')
+        for (const s of state.selections || []) this.saveSelection(s)
+      }
     })
   }
 

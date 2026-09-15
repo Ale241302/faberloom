@@ -6,7 +6,7 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
 - el **producto** FaberLoom (espacios, agentes, rutinas, mesa, memoria, autonomía), y
 - el **mockup v2** (prototipo visual previo), conservado en la raíz como referencia.
 
-## Producto · E3 — Espacios y contexto (primer corte)
+## Producto · E3 (Espacios) + E4 (Agentes y política de modelos)
 
 - Modelo de espacios, subespacios, herencia configurable y exclusiones.
 - Resolución de **contexto efectivo** con registro de versiones y exposición de
@@ -23,6 +23,9 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
   gateway key opcional) que expone las operaciones como herramientas.
 - **Vínculos** de conversaciones y archivos a espacios (`linkConversation`,
   `linkFile`, `listLinks`, `unlink`), con `sharedWith` y `previewLink`.
+- **Agentes y política de modelos** (E4): pool de modelos, catálogo versionado con
+  tres rutas de creación, política (principal/exclusividad/alternativas/
+  escalamiento/presupuesto), resolver y recomendador.
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).

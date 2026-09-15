@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { PassThrough } from 'node:stream'
 
 import { SpacesService } from '../src/spaces/index.js'
+import { AgentsService } from '../src/agents/index.js'
 import { createMcpServer } from '../src/mcp/server.js'
 
 const fixedNow = () => '2026-09-15T00:00:00.000Z'
@@ -54,6 +55,24 @@ test('MCP: herramienta y método desconocidos', () => {
 
 test('MCP: notificación no genera respuesta', () => {
   assert.equal(server().handleMessage({ jsonrpc: '2.0', method: 'notifications/initialized' }), null)
+})
+
+test('MCP: expone Agentes y resuelve la política de modelo', () => {
+  const service = new SpacesService({ idGen: seq('sp'), now: fixedNow })
+  const agentsService = new AgentsService({ idGen: seq('ag'), now: fixedNow })
+  const mcp = createMcpServer({ service, agentsService, defaultUserId: 'u1' })
+
+  const names = mcp.handleMessage({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }).result.tools.map((t) => t.name)
+  assert.ok(names.includes('agents_create'))
+  assert.ok(names.includes('models_register'))
+
+  mcp.handleMessage({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'models_register', arguments: { id: 'mdl_a', provider: 'deepseek', name: 'chat', pricing: { input: 1, output: 2 } } } })
+  const created = mcp.handleMessage({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'agents_create', arguments: { name: 'Proformas', modelPolicy: { principal: 'mdl_a' } } } })
+  const agent = JSON.parse(created.result.content[0].text)
+  assert.equal(agent.ownerId, 'u1')
+
+  const resolved = mcp.handleMessage({ jsonrpc: '2.0', id: 4, method: 'tools/call', params: { name: 'agents_resolve_model', arguments: { agentId: agent.id, task: {} } } })
+  assert.equal(JSON.parse(resolved.result.content[0].text).modelId, 'mdl_a')
 })
 
 test('MCP: serveStdio responde una línea JSON-RPC', async () => {
