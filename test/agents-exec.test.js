@@ -122,3 +122,57 @@ test('ejecuciones y evidencia persisten (SQLite)', () => {
   assert.equal(s2.run('agents.listExecutions', { agentId: a.id }).data.length, 1)
   assert.equal(s2.run('models.evidence', { modelId: 'mdl_a' }).data[0].approved, 1)
 })
+
+test('herramienta asíncrona: se espera y se registra', async () => {
+  const s = svc()
+  s.run('tools.register', { id: 'aupper', handler: async (input) => ({ text: String((input && input.text) || '').toUpperCase() }) })
+  const a = s.run('agents.create', { name: 'A', ownerId: 'u1', tools: ['aupper'] }).data
+  const r = await s.run('agents.executeTool', { agentId: a.id, toolId: 'aupper', input: { text: 'hola' } })
+  assert.equal(r.ok, true)
+  assert.equal(r.data.status, 'ok')
+  assert.equal(r.data.output.text, 'HOLA')
+  assert.equal(s.run('agents.listExecutions', { agentId: a.id }).data.length, 1)
+})
+
+test('herramienta asíncrona que falla queda registrada', async () => {
+  const s = svc()
+  s.run('tools.register', {
+    id: 'afail',
+    handler: async () => {
+      throw new Error('async falló')
+    },
+  })
+  const a = s.run('agents.create', { name: 'A', ownerId: 'u1', tools: ['afail'] }).data
+  const r = await s.run('agents.executeTool', { agentId: a.id, toolId: 'afail', input: {} })
+  assert.equal(r.data.status, 'error')
+  assert.equal(r.data.error, 'async falló')
+})
+
+test('run(): síncrono con handler sync, promesa con handler async', async () => {
+  const s = svc()
+  s.run('tools.register', { id: 'asyncx', handler: async () => 1 })
+  const a = s.run('agents.create', { name: 'A', ownerId: 'u1', tools: ['echo', 'asyncx'] }).data
+
+  const sync = s.run('agents.executeTool', { agentId: a.id, toolId: 'echo', input: {} })
+  assert.equal(typeof sync.then, 'undefined')
+
+  const asyncRes = s.run('agents.executeTool', { agentId: a.id, toolId: 'asyncx', input: {} })
+  assert.equal(typeof asyncRes.then, 'function')
+  assert.equal((await asyncRes).data.output, 1)
+})
+
+test('delegación con herramienta asíncrona', async () => {
+  const s = svc()
+  s.run('models.register', { id: 'mdl_c', provider: 'deepseek', name: 'chat', pricing: { input: 1, output: 2 } })
+  s.run('tools.register', { id: 'async_upper', handler: async (input) => ({ text: String((input && input.text) || '').toUpperCase() }) })
+  const child = s.run('agents.create', { name: 'Hijo', ownerId: 'u1', tools: ['async_upper'], modelPolicy: { principal: 'mdl_c' } }).data
+  const parent = s.run('agents.create', { name: 'Padre', ownerId: 'u1', subagents: [child.id], modelPolicy: { principal: 'mdl_c', budget: { amount: 5 } } }).data
+  const r = await s.run('agents.delegate', {
+    parentAgentId: parent.id,
+    subagentAgentId: child.id,
+    task: { promptTokens: 1000, completionTokens: 1000 },
+    toolCalls: [{ toolId: 'async_upper', input: { text: 'hola' } }],
+  })
+  assert.equal(r.data.status, 'selected')
+  assert.equal(r.data.executions[0].output.text, 'HOLA')
+})

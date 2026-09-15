@@ -315,19 +315,29 @@ export class AgentsService {
 
     const executionId = this._id('exe')
     const started = Date.now()
-    let status = 'ok'
-    let output
-    let error = null
+    const base = { id: executionId, agentId, kind: 'tool', toolId, subagentId: null, modelId, cost: tool.cost ?? null, error: null, createdAt: this.#now() }
+
+    let result
     try {
-      output = tool.handler(input, { agentId, modelId, executionId })
+      result = tool.handler(input, { agentId, modelId, executionId })
     } catch (e) {
-      status = 'error'
-      error = (e && e.message) || String(e)
+      return this.#recordExecution({ ...base, status: 'error', durationMs: Date.now() - started, error: (e && e.message) || String(e) })
     }
-    const record = { id: executionId, agentId, kind: 'tool', toolId, subagentId: null, modelId, status, cost: tool.cost ?? null, durationMs: Date.now() - started, error, createdAt: this.#now() }
+    if (result && typeof result.then === 'function') {
+      return result.then(
+        (output) => this.#recordExecution({ ...base, status: 'ok', durationMs: Date.now() - started, output }),
+        (e) => this.#recordExecution({ ...base, status: 'error', durationMs: Date.now() - started, error: (e && e.message) || String(e) }),
+      )
+    }
+    return this.#recordExecution({ ...base, status: 'ok', durationMs: Date.now() - started, output: result })
+  }
+
+  #recordExecution(record) {
     this.#executions.push(record)
     this.#persistExecution(record)
-    return status === 'ok' ? { executionId, status, output, durationMs: record.durationMs } : { executionId, status, error, durationMs: record.durationMs }
+    return record.status === 'ok'
+      ? { executionId: record.id, status: 'ok', output: record.output, durationMs: record.durationMs }
+      : { executionId: record.id, status: 'error', error: record.error, durationMs: record.durationMs }
   }
 
   /** Delegación a un subagente: respeta su política y el presupuesto compartido. */
@@ -350,24 +360,36 @@ export class AgentsService {
       if (spent + decision.estimatedCost > amount) return { status: 'denied', reason: 'BUDGET_EXCEEDED', childAgentId: child.id, decision }
     }
 
-    const executions = []
-    for (const call of toolCalls) {
+    const finish = (executions) => {
+      const failed = executions.some((e) => e.status === 'error')
+      const record = { id: this._id('exe'), agentId: parent.id, kind: 'delegation', toolId: null, subagentId: child.id, modelId: decision.modelId, status: failed ? 'error' : 'ok', cost: decision.estimatedCost ?? null, durationMs: 0, error: failed ? 'tool_error' : null, createdAt: this.#now() }
+      this.#executions.push(record)
+      this.#persistExecution(record)
+      return { status: 'selected', delegationId: record.id, childAgentId: child.id, modelId: decision.modelId, policyVersion: decision.policyVersion, estimatedCost: decision.estimatedCost, executions, failed }
+    }
+
+    // Ejecuta las herramientas del hijo en orden; soporta handlers sync y async.
+    const step = (index, acc) => {
+      if (index >= toolCalls.length) return finish(acc)
+      const call = toolCalls[index]
       let r
       try {
         r = this.executeTool({ agentId: child.id, toolId: call.toolId, input: call.input || {}, modelId: decision.modelId })
       } catch (e) {
-        r = { status: 'error', error: (e && e.message) || String(e) }
+        acc.push({ status: 'error', error: (e && e.message) || String(e) })
+        return finish(acc)
       }
-      executions.push(r)
-      if (r.status === 'error') break
+      if (r && typeof r.then === 'function') {
+        return r.then((res) => {
+          acc.push(res)
+          return res.status === 'error' ? finish(acc) : step(index + 1, acc)
+        })
+      }
+      acc.push(r)
+      return r.status === 'error' ? finish(acc) : step(index + 1, acc)
     }
 
-    const failed = executions.some((e) => e.status === 'error')
-    const record = { id: this._id('exe'), agentId: parent.id, kind: 'delegation', toolId: null, subagentId: child.id, modelId: decision.modelId, status: failed ? 'error' : 'ok', cost: decision.estimatedCost ?? null, durationMs: 0, error: failed ? 'tool_error' : null, createdAt: this.#now() }
-    this.#executions.push(record)
-    this.#persistExecution(record)
-
-    return { status: 'selected', delegationId: record.id, childAgentId: child.id, modelId: decision.modelId, policyVersion: decision.policyVersion, estimatedCost: decision.estimatedCost, executions, failed }
+    return step(0, [])
   }
 
   listExecutions({ agentId } = {}) {
@@ -561,40 +583,59 @@ export class AgentsService {
     return this.#selections.filter((s) => !agentId || s.agentId === agentId).map((s) => ({ ...s }))
   }
 
-  /** Contrato único para UI y MCP. */
+  /**
+   * Contrato único para UI y MCP. Devuelve `{ok,data}` o `{ok:false,error}`.
+   * Si la operación es asíncrona (handler async), devuelve una Promesa de ese
+   * mismo objeto; el transporte la espera.
+   */
   run(operation, params = {}) {
+    let result
     try {
-      switch (operation) {
-        case 'models.register': return ok(this.registerModel(params))
-        case 'models.list': return ok(this.listModels(params))
-        case 'models.get': return ok(this.getModel(params.modelId))
-        case 'models.remove': return ok(this.removeModel(params.modelId))
-        case 'templates.register': return ok(this.registerTemplate(params))
-        case 'templates.list': return ok(this.listTemplates())
-        case 'agents.create': return ok(this.createAgent(params))
-        case 'agents.get': return ok(this.getAgent(params.agentId))
-        case 'agents.list': return ok(this.listAgents(params))
-        case 'agents.update': return ok(this.updateAgent(params.agentId, params.patch || {}))
-        case 'agents.duplicate': return ok(this.duplicate(params))
-        case 'agents.deactivate': return ok(this.deactivate(params.agentId))
-        case 'agents.setModelPolicy': return ok(this.setModelPolicy(params))
-        case 'agents.getEffectivePolicy': return ok(this.getEffectivePolicy(params.agentId))
-        case 'agents.recommendModel': return ok(this.recommendModel(params))
-        case 'agents.resolveModel': return ok(this.resolveModel(params))
-        case 'agents.recordSelection': return ok(this.recordSelection(params))
-        case 'agents.listSelections': return ok(this.listSelections(params))
-        case 'tools.register': return ok(this.registerTool(params))
-        case 'tools.list': return ok(this.listTools())
-        case 'agents.executeTool': return ok(this.executeTool(params))
-        case 'agents.delegate': return ok(this.delegate(params))
-        case 'agents.listExecutions': return ok(this.listExecutions(params))
-        case 'models.recordOutcome': return ok(this.recordOutcome(params))
-        case 'models.evidence': return ok(this.evidence(params))
-        default: return { ok: false, error: { code: 'UNKNOWN_OPERATION', message: operation } }
-      }
+      result = this.#dispatch(operation, params)
     } catch (e) {
       if (e instanceof AgentsError) return err(e)
       throw e
+    }
+    if (result && typeof result.then === 'function') {
+      return result.then(
+        (data) => ok(data),
+        (e) => {
+          if (e instanceof AgentsError) return err(e)
+          throw e
+        },
+      )
+    }
+    return ok(result)
+  }
+
+  #dispatch(operation, params) {
+    switch (operation) {
+      case 'models.register': return this.registerModel(params)
+      case 'models.list': return this.listModels(params)
+      case 'models.get': return this.getModel(params.modelId)
+      case 'models.remove': return this.removeModel(params.modelId)
+      case 'templates.register': return this.registerTemplate(params)
+      case 'templates.list': return this.listTemplates()
+      case 'agents.create': return this.createAgent(params)
+      case 'agents.get': return this.getAgent(params.agentId)
+      case 'agents.list': return this.listAgents(params)
+      case 'agents.update': return this.updateAgent(params.agentId, params.patch || {})
+      case 'agents.duplicate': return this.duplicate(params)
+      case 'agents.deactivate': return this.deactivate(params.agentId)
+      case 'agents.setModelPolicy': return this.setModelPolicy(params)
+      case 'agents.getEffectivePolicy': return this.getEffectivePolicy(params.agentId)
+      case 'agents.recommendModel': return this.recommendModel(params)
+      case 'agents.resolveModel': return this.resolveModel(params)
+      case 'agents.recordSelection': return this.recordSelection(params)
+      case 'agents.listSelections': return this.listSelections(params)
+      case 'tools.register': return this.registerTool(params)
+      case 'tools.list': return this.listTools()
+      case 'agents.executeTool': return this.executeTool(params)
+      case 'agents.delegate': return this.delegate(params)
+      case 'agents.listExecutions': return this.listExecutions(params)
+      case 'models.recordOutcome': return this.recordOutcome(params)
+      case 'models.evidence': return this.evidence(params)
+      default: return fail('UNKNOWN_OPERATION', operation)
     }
   }
 

@@ -15,6 +15,7 @@ const service = new SpacesService({ repository, blobStore: blobStoreFromEnv(proc
 const agentsService = new AgentsService({ repository })
 agentsService.registerTool({ id: 'echo', name: 'echo', handler: (input) => input })
 agentsService.registerTool({ id: 'upper', name: 'upper', handler: (input) => ({ text: String((input && input.text) || '').toUpperCase() }) })
+agentsService.registerTool({ id: 'async_upper', name: 'async_upper', handler: async (input) => ({ text: String((input && input.text) || '').toUpperCase() }) })
 
 startHttp({
   service,

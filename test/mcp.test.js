@@ -75,6 +75,21 @@ test('MCP: expone Agentes y resuelve la política de modelo', () => {
   assert.equal(JSON.parse(resolved.result.content[0].text).modelId, 'mdl_a')
 })
 
+test('MCP: operación asíncrona se espera y resuelve', async () => {
+  const service = new SpacesService({ idGen: seq('sp'), now: fixedNow })
+  const agentsService = new AgentsService({ idGen: seq('ag'), now: fixedNow })
+  agentsService.run('tools.register', { id: 'aupper', handler: async (input) => ({ text: String((input && input.text) || '').toUpperCase() }) })
+  const mcp = createMcpServer({ service, agentsService, defaultUserId: 'u1' })
+
+  const created = mcp.handleMessage({ jsonrpc: '2.0', id: 1, method: 'tools/call', params: { name: 'agents_create', arguments: { name: 'A', tools: ['aupper'] } } })
+  const agent = JSON.parse(created.result.content[0].text)
+
+  const pending = mcp.handleMessage({ jsonrpc: '2.0', id: 2, method: 'tools/call', params: { name: 'agents_execute_tool', arguments: { agentId: agent.id, toolId: 'aupper', input: { text: 'hi' } } } })
+  assert.equal(typeof pending.then, 'function')
+  const res = await pending
+  assert.equal(JSON.parse(res.result.content[0].text).output.text, 'HI')
+})
+
 test('MCP: serveStdio responde una línea JSON-RPC', async () => {
   const mcp = server()
   const input = new PassThrough()

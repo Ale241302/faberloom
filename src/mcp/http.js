@@ -89,7 +89,7 @@ export function createHttpHandler({ service, agentsService, gatewayKey = '', def
     let newSession
     for (const message of messages) {
       if (message && message.method === 'initialize') newSession = randomUUID()
-      const response = mcp.handleMessage(withContext(message, userId, companyId))
+      const response = await Promise.resolve(mcp.handleMessage(withContext(message, userId, companyId)))
       if (response) responses.push(response)
     }
 

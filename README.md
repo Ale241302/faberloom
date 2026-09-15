@@ -27,7 +27,8 @@ conectado por MCP a la consola MWT.ONE. Este repositorio reúne:
   tres rutas de creación, política (principal/exclusividad/alternativas/
   escalamiento/presupuesto), resolver y recomendador.
 - **Herramientas y subagentes ejecutables** y **evidencia real por modelo**
-  (`executeTool`, `delegate`, `recordOutcome`/`evidence`).
+  (`executeTool`, `delegate`, `recordOutcome`/`evidence`), con handlers síncronos
+  o asíncronos.
 - Contrato `run(operation, params)` compartido por UI y MCP.
 
 Diseño y contrato: [`docs/spaces-model.md`](docs/spaces-model.md).

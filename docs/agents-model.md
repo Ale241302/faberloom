@@ -88,9 +88,12 @@ tarifas → `recommended: null` y `limitations: [cost_unknown]`.
 
 ## 7. Herramientas y subagentes ejecutables
 
-- **Herramientas**: el host registra `handler(input, ctx)` (síncrono). Un agente
-  solo puede ejecutar lo que declara en `tools` (o `*`). Si no → `FORBIDDEN_TOOL`.
-  Cada ejecución se registra con estado, error y duración.
+- **Herramientas**: el host registra `handler(input, ctx)`, **síncrono o
+  asíncrono** (si devuelve una promesa, se espera). Un agente solo puede ejecutar
+  lo que declara en `tools` (o `*`); si no → `FORBIDDEN_TOOL`. Cada ejecución se
+  registra con estado, error y duración. El contrato `run()` devuelve el resultado
+  de inmediato para handlers síncronos y una promesa para asíncronos; el
+  transporte MCP (stdio y HTTP) la espera.
 - **Subagentes**: `agents.delegate` exige que el padre tenga autorizado el
   subagente (`subagents`), resuelve el **modelo del hijo con su propia política**,
   comparte el **presupuesto del padre** (no abre uno nuevo) y ejecuta las
@@ -109,10 +112,8 @@ El recomendador usa la evidencia: si hay casos probados, ordena por costo por
 resultado útil (`basis: "evidence"`) y deja de ser provisional; sin evidencia,
 cae a costo estimado y marca `provisional`.
 
-## 9. Fuera de alcance (siguiente)
+## 9. Límites conocidos
 
-- Herramientas **asíncronas** (hoy el handler debe ser síncrono; el host puede
-  puentear con `execFileSync`, como el almacén S3).
 - Persistencia de la política dentro del harness (el gateway ya inyecta el MCP).
 
 ## 10. Pruebas

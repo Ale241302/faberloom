@@ -275,6 +275,13 @@ function mapTool(name, args, ctx) {
 
 const rpcError = (id, code, message) => ({ jsonrpc: '2.0', id, error: { code, message } })
 
+function toolResponse(id, out) {
+  if (!out.ok) {
+    return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `${out.error.code}: ${out.error.message}` }], isError: true } }
+  }
+  return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(out.data) }], isError: false } }
+}
+
 export function createMcpServer({ service, agentsService, defaultUserId = process.env.FABERLOOM_USER_ID || 'anon' } = {}) {
   if (!service && !agentsService) throw new Error('createMcpServer requiere al menos un servicio')
   const tools = [...(service ? SPACES_TOOLS : []), ...(agentsService ? AGENTS_TOOLS : [])]
@@ -313,10 +320,9 @@ export function createMcpServer({ service, agentsService, defaultUserId = proces
       if (!mapped) return rpcError(id, -32602, `herramienta desconocida: ${name}`)
       const [operation, opParams] = mapped
       const out = svc.run(operation, opParams)
-      if (!out.ok) {
-        return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: `${out.error.code}: ${out.error.message}` }], isError: true } }
-      }
-      return { jsonrpc: '2.0', id, result: { content: [{ type: 'text', text: JSON.stringify(out.data) }], isError: false } }
+      // Soporta operaciones asíncronas (handlers async): devuelve la promesa.
+      if (out && typeof out.then === 'function') return out.then((res) => toolResponse(id, res))
+      return toolResponse(id, out)
     }
 
     return rpcError(id, -32601, `método no soportado: ${method}`)
@@ -324,6 +330,7 @@ export function createMcpServer({ service, agentsService, defaultUserId = proces
 
   function serveStdio(input = process.stdin, output = process.stdout) {
     let buffer = ''
+    let chain = Promise.resolve()
     input.setEncoding('utf8')
     input.on('data', (chunk) => {
       buffer += chunk
@@ -338,8 +345,11 @@ export function createMcpServer({ service, agentsService, defaultUserId = proces
         } catch {
           continue
         }
-        const response = handleMessage(message)
-        if (response) output.write(JSON.stringify(response) + '\n')
+        // Encola para preservar el orden y esperar respuestas asíncronas.
+        chain = chain.then(async () => {
+          const response = await Promise.resolve(handleMessage(message))
+          if (response) output.write(JSON.stringify(response) + '\n')
+        })
       }
     })
   }
