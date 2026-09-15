@@ -1,0 +1,13 @@
+{
+  "name": "faberloom",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "FaberLoom — producto propio sobre DeepSeek Harness. Primer corte: Espacios y contexto (E3).",
+  "scripts": {
+    "test": "node --test"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}
